@@ -64,7 +64,7 @@
 
 %macro LOAD_IF_USED 2 ; reg_id, number_of_args
     %if %1 < %2
-        mov r%1, [rsp + stack_offset + 8 + %1*8]
+        mov r%1, [rbp + stack_offset + %1*8]
     %endif
 %endmacro
 
@@ -177,7 +177,8 @@
     align 16 
     %1:
 %ifdef WIN64
-    %assign stack_offset 8
+    ;%assign stack_offset 8
+    %assign stack_offset 0
 %else
     %assign stack_offset 0
 %endif
@@ -373,6 +374,7 @@ cendfunc vector_fmul_reverse
 ;                         const float *win, uint32_t len)
 ;-----------------------------------------------------------------------------
 cglobal vector_fmul_window, 5,6,6
+    movsxd     rdi, edi
     mov       r5, r4
     neg       r5 
     shl       r5, 0x2
