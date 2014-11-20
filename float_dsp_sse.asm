@@ -374,7 +374,9 @@ cendfunc vector_fmul_reverse
 ;                         const float *win, uint32_t len)
 ;-----------------------------------------------------------------------------
 cglobal vector_fmul_window, 5,6,6
+%ifdef WIN64
     movsxd     rdi, edi
+%endif
     mov       r5, r4
     neg       r5 
     shl       r5, 0x2
