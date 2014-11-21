@@ -933,14 +933,18 @@ cglobal conv_s16_to_s16p_2ch, 3,5,3
     shl          r2, 1
     xor          r3, r3
 .loop:
-    movaps     xmm0, [r1+2*r3]  ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
-    pshuflw    xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 1, 3, 4, 5, 6, 7 
-    pshufhw    xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 1, 3, 4, 6, 5, 7
-    shufps     xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 4, 6, 1, 3, 5, 7
-    movhlps    xmm1, xmm0
-    movlps  [r0+r3], xmm0
-    movlps  [r4+r3], xmm1
-    add        r3, 0x08
+    movaps     xmm0, [r1+2*r3]       ; xmm0 = 0,  1,  2,  3,  4,  5,  6,  7
+    movaps     xmm1, [r1+2*r3+0x10]  ; xmm1 = 8,  9, 10, 11, 12, 13, 14, 15
+    pshuflw    xmm0, xmm0, 0xd8      ; xmm0 = 0,  2,  1,  3,  4,  5,  6,  7 
+    pshufhw    xmm0, xmm0, 0xd8      ; xmm0 = 0,  2,  1,  3,  4,  6,  5,  7
+    pshuflw    xmm1, xmm1, 0xd8      ; xmm1 = 8, 10,  9, 11, 12, 13, 14, 15 
+    pshufhw    xmm1, xmm1, 0xd8      ; xmm1 = 8, 10,  9, 11, 12, 14, 13, 15
+    movaps     xmm2, xmm0
+    shufps     xmm0, xmm1, 0x88
+    shufps     xmm2, xmm1, 0xdd
+    movaps  [r0+r3], xmm0
+    movaps  [r4+r3], xmm2 
+    add        r3, 0x10
     cmp        r3, r2 
     jl .loop
     RET
@@ -980,5 +984,7 @@ db " -export:aacenc_calc_expspec_sse"
 db " -export:vorbis_inverse_coupling_sse"
 db " -export:conv_fltp_to_flt_2ch_sse"
 db " -export:conv_flt_to_fltp_2ch_sse"
+db " -export:conv_s16p_to_s16_2ch_sse"
+db " -export:conv_s16_to_s16p_2ch_sse"
 %endif
 
