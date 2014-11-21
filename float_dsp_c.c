@@ -241,3 +241,21 @@ FDSP_EXPORT void vorbis_inverse_coupling_c(float *mag, float *ang, unsigned int 
     }
 }
 
+FDSP_EXPORT void conv_fltp_to_flt_2ch_c(float *dst, float *src[2], unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        dst[2*i] = src[0][i];
+        dst[2*i+1] = src[1][i];
+    }
+}
+
+FDSP_EXPORT void conv_flt_to_fltp_2ch_c(float *dst[2], float *src, unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        dst[0][i] = src[2*i];
+        dst[1][i] = src[2*i+1];
+    }
+}
+

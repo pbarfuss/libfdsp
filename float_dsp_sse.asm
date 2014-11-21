@@ -853,6 +853,52 @@ cglobal sbr_qmf_synthesis_window, 4,5,2
     RET
 cendfunc sbr_qmf_synthesis_window
 
+;------------------------------------------------------------------------------
+; void conv_fltp_to_flt_2ch(float *dst, float **src, unsigned int len);
+;------------------------------------------------------------------------------
+
+cglobal conv_fltp_to_flt_2ch, 3,5,3
+    mov        r4, [r1+gprsize]
+    mov        r1, [r1]
+    shl        r2, 2
+    xor        r3, r3
+.loop:
+    movaps   xmm0, [r1+r3]
+    movaps   xmm1, [r4+r3]
+    movaps   xmm2, xmm0
+    unpckhps xmm2, xmm1
+    unpcklps xmm0, xmm1
+    movaps  [r0+2*r3     ], xmm0
+    movaps  [r0+2*r3+0x10], xmm2
+    add        r3, 0x10
+    cmp        r3, r2 
+    jl .loop
+    RET
+cendfunc conv_fltp_to_flt_2ch
+
+;------------------------------------------------------------------------------
+; void conv_flt_to_fltp_2ch(float **dst, float *src, unsigned int len);
+;------------------------------------------------------------------------------
+
+cglobal conv_flt_to_fltp_2ch, 3,5,3
+    mov          r4, [r0+gprsize]
+    mov          r0, [r0        ]
+    shl          r2, 2
+    xor          r3, r3
+.loop:
+    movaps     xmm0, [r1+2*r3     ]
+    movaps     xmm1, [r1+2*r3+0x10]
+    movaps     xmm2, xmm0
+    shufps     xmm2, xmm1, 0xdd
+    shufps     xmm0, xmm1, 0x88
+    movaps  [r0+r3], xmm0
+    movaps  [r4+r3], xmm2
+    add          r3, 0x10
+    cmp          r3, r2 
+    jl .loop
+    RET
+cendfunc conv_flt_to_fltp_2ch
+
 %ifdef FDSP_DLL
 %ifidn __OUTPUT_FORMAT__,win64
 %define NEED_DLLEXPORT_TABLE
@@ -885,5 +931,7 @@ db " -export:sbrenc_sum128x5_sse"
 db " -export:sbrenc_qmf_deint_bfly_sse"
 db " -export:aacenc_calc_expspec_sse"
 db " -export:vorbis_inverse_coupling_sse"
+db " -export:conv_fltp_to_flt_2ch_sse"
+db " -export:conv_flt_to_fltp_2ch_sse"
 %endif
 
