@@ -853,12 +853,14 @@ cglobal sbr_qmf_synthesis_window, 4,5,2
     RET
 cendfunc sbr_qmf_synthesis_window
 
+%ifdef FDSP_DLL
 %ifidn __OUTPUT_FORMAT__,win64
 %define NEED_DLLEXPORT_TABLE
 %elifidn __OUTPUT_FORMAT__,win32
 %define NEED_DLLEXPORT_TABLE
 %elifidn __OUTPUT_FORMAT__,win
 %define NEED_DLLEXPORT_TABLE
+%endif
 %endif
 
 %ifdef NEED_DLLEXPORT_TABLE

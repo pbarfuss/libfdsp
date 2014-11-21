@@ -12,7 +12,7 @@ typedef struct FFTComplex {
 #define FFTCOMPLEX_T_DEFINED
 #endif
 
-#if defined(_WIN32) || defined(_WIN64)
+#if (defined(_WIN32) || defined(_WIN64)) && defined(FDSP_DLL)
 #ifdef BUILDING_FDSP
 #define FDSP_EXPORT __declspec(dllexport)
 #else
