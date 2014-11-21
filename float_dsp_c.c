@@ -259,3 +259,21 @@ FDSP_EXPORT void conv_flt_to_fltp_2ch_c(float *dst[2], float *src, unsigned int 
     }
 }
 
+FDSP_EXPORT void conv_s16p_to_s16_2ch_c(short *dst, short *src[2], unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        dst[2*i] = src[0][i];
+        dst[2*i+1] = src[1][i];
+    }
+}
+
+FDSP_EXPORT void conv_s16_to_s16p_2ch_c(short *dst[2], short *src, unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        dst[0][i] = src[2*i];
+        dst[1][i] = src[2*i+1];
+    }
+}
+

@@ -106,12 +106,18 @@ FDSP_EXPORT void sbr_qmf_synthesis_window_neon(float *out, float *v, float *sbr_
 
 FDSP_EXPORT void conv_fltp_to_flt_2ch_c(float *dst, float *src[2], unsigned int len);
 FDSP_EXPORT void conv_flt_to_fltp_2ch_c(float *dst[2], float *src, unsigned int len);
+FDSP_EXPORT void conv_s16p_to_s16_2ch_c(short *dst, short *src[2], unsigned int len);
+FDSP_EXPORT void conv_s16_to_s16p_2ch_c(short *dst[2], short *src, unsigned int len);
 
 FDSP_EXPORT void conv_fltp_to_flt_2ch_sse(float *dst, float *src[2], unsigned int len);
 FDSP_EXPORT void conv_flt_to_fltp_2ch_sse(float *dst[2], float *src, unsigned int len);
+FDSP_EXPORT void conv_s16p_to_s16_2ch_sse(short *dst, short *src[2], unsigned int len);
+FDSP_EXPORT void conv_s16_to_s16p_2ch_sse(short *dst[2], short *src, unsigned int len);
 
 FDSP_EXPORT void conv_fltp_to_flt_2ch_neon(float *dst, float *src[2], unsigned int len);
 FDSP_EXPORT void conv_flt_to_fltp_2ch_neon(float *dst[2], float *src, unsigned int len);
+FDSP_EXPORT void conv_s16p_to_s16_2ch_neon(short *dst, short *src[2], unsigned int len);
+FDSP_EXPORT void conv_s16_to_s16p_2ch_neon(short *dst[2], short *src, unsigned int len);
 
 #ifdef __cplusplus
 };

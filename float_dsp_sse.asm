@@ -899,6 +899,53 @@ cglobal conv_flt_to_fltp_2ch, 3,5,3
     RET
 cendfunc conv_flt_to_fltp_2ch
 
+;------------------------------------------------------------------------------
+; void conv_s16p_to_s16_2ch(int16_t *dst, int16_t **src, unsigned int len);
+;------------------------------------------------------------------------------
+
+cglobal conv_s16p_to_s16_2ch, 3,5,4
+    mov        r4, [r1+gprsize]
+    mov        r1, [r1]
+    shl        r2, 1
+    xor        r3, r3
+.loop:
+    movaps     xmm0, [r1+r3]   ; xmm0 = 0, 2, 4, 6, 8, 10, 12, 14
+    movaps     xmm1, [r4+r3]   ; xmm1 = 1, 3, 5, 7, 9, 11, 13, 15
+    movhlps    xmm2, xmm0      ; xmm2 = 8, 10, 12, 12, x, x, x, x
+    movhlps    xmm3, xmm1      ; xmm3 = 9, 11, 13, 15, x, x, x, x
+    punpcklwd  xmm0, xmm1      ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
+    punpcklwd  xmm2, xmm3      ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
+    movaps  [r0+2*r3     ], xmm0
+    movaps  [r0+2*r3+0x10], xmm2
+    add        r3, 0x10
+    cmp        r3, r2 
+    jl .loop
+    RET
+cendfunc conv_s16p_to_s16_2ch
+
+;------------------------------------------------------------------------------
+; void conv_s16_to_s16p_2ch(int16_t **dst, int16_t *src, unsigned int len);
+;------------------------------------------------------------------------------
+
+cglobal conv_s16_to_s16p_2ch, 3,5,3
+    mov          r4, [r0+gprsize]
+    mov          r0, [r0        ]
+    shl          r2, 1
+    xor          r3, r3
+.loop:
+    movaps     xmm0, [r1+2*r3]  ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
+    pshuflw    xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 1, 3, 4, 5, 6, 7 
+    pshufhw    xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 1, 3, 4, 6, 5, 7
+    shufps     xmm0, xmm0, 0xd8 ; xmm0 = 0, 2, 4, 6, 1, 3, 5, 7
+    movhlps    xmm1, xmm0
+    movlps  [r0+r3], xmm0
+    movlps  [r4+r3], xmm1
+    add        r3, 0x08
+    cmp        r3, r2 
+    jl .loop
+    RET
+cendfunc conv_s16p_to_s16_2ch
+
 %ifdef FDSP_DLL
 %ifidn __OUTPUT_FORMAT__,win64
 %define NEED_DLLEXPORT_TABLE
