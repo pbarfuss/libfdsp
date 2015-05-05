@@ -31,43 +31,24 @@ function vector_fmul_neon, export=1
         bx lr
 endfunc
 function vector_fmac_scalar_neon, export=1
-        vdup.32         q15, r2
-        bics            r12, r3, #7
-        mov             r2, r0
-        beq             3f
+        vdup.32         q8, d0[0]
+        mov             r3, r0
 1:
         vld1.32         {q0},     [r1]!
-        vld1.32         {q8},     [r2]!
-        vld1.32         {q1},     [r1]!
-        vld1.32         {q9},     [r2]!
-        vmla.f32        q8,  q0,  q15
-        vmla.f32        q9,  q1,  q15
-        vst1.32         {q8},     [r0]!
-        vst1.32         {q9},     [r0]!
-
-        subs            r12, r12, #8
-        beq             2f
-        b               1b
-2:
-        ands            r3, r3, #7
-        it              eq
-        bxeq            lr
-3:
-        vld1.32         {q0},     [r1]!
-        vld1.32         {q8},     [r2]!
-        vmla.f32        q8,  q0,  q15
-        vst1.32         {q8},     [r0]!
-        subs            r3, r3, #4
-        bgt             3b
+        vld1.32         {q15},    [r3]!
+        vmla.f32        q15, q0, q8
+        vst1.32         {q15},     [r0]!
+        subs            r2, r2, #4
+        bgt             1b
         bx              lr
 endfunc
 function vector_fmul_scalar_neon, export=1
-        vdup.32  q8, r2
+        vdup.32  q8, d0[0]
 1:
         vld1.32 {q0},[r1]!
         vmul.f32 q0, q0, q8
         vst1.32 {q0},[r0]!
-        subs r3, r3, #4
+        subs r2, r2, #4
         bgt 1b
         bx lr
 endfunc
