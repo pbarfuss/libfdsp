@@ -85,6 +85,30 @@ FDSP_EXPORT float scalarproduct_float_c(const float *v1, const float *v2, unsign
     return p;
 }
 
+FDSP_EXPORT float scalarproduct_symmetric_fir_float_c(const float *v1, const float *v2, unsigned int len)
+{
+    float p = 0.0;
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        float t = v1[i] + v1[2*len - i];
+        p += t * v2[i];
+    }
+    p += v1[len] * v2[len];
+    return p;
+}
+
+FDSP_EXPORT void vector_clipf_c(float *dst, const float *src,
+                                float min, float max, unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        float f = src[i];
+        if (f < min) f = min;
+        if (f > max) f = max;
+        dst[i] = f;
+    }
+}
+
 FDSP_EXPORT void sbr_sum64x5_c(float *z)
 {
     unsigned int k;
@@ -134,7 +158,7 @@ FDSP_EXPORT void sbr_hf_g_filt_c(FFTComplex *Y, FFTComplex (*X_high)[40],
 }
 
 FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
-                     float alpha[4], unsigned int start, unsigned int end)
+                              float alpha[4], unsigned int start, unsigned int end)
 {
     int i;
 
@@ -154,19 +178,20 @@ FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
     }
 }
 
-FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window, unsigned int n)
+FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window, unsigned int k)
 {
-    for (n = 0; n < 64; n++) {
-        float t  = v[n]*sbr_qmf_window[n];
-              t += v[n+192]*sbr_qmf_window[n+64];
-              t += v[n+256]*sbr_qmf_window[n+128];
-              t += v[n+448]*sbr_qmf_window[n+192];
-              t += v[n+512]*sbr_qmf_window[n+256];
-              t += v[n+704]*sbr_qmf_window[n+320];
-              t += v[n+768]*sbr_qmf_window[n+384];
-              t += v[n+960]*sbr_qmf_window[n+448];
-              t += v[n+1024]*sbr_qmf_window[n+512];
-              t += v[n+1216]*sbr_qmf_window[n+576];
+    unsigned int n;
+    for (n = 0; n < k; n++) {
+        float t  = v[n     ]*sbr_qmf_window[n];
+              t += v[n+ 3*k]*sbr_qmf_window[n+  k];
+              t += v[n+ 4*k]*sbr_qmf_window[n+2*k];
+              t += v[n+ 7*k]*sbr_qmf_window[n+3*k];
+              t += v[n+ 8*k]*sbr_qmf_window[n+4*k];
+              t += v[n+11*k]*sbr_qmf_window[n+5*k];
+              t += v[n+12*k]*sbr_qmf_window[n+6*k];
+              t += v[n+15*k]*sbr_qmf_window[n+7*k];
+              t += v[n+16*k]*sbr_qmf_window[n+8*k];
+              t += v[n+19*k]*sbr_qmf_window[n+9*k];
         out[n] = t;
     }
 }
@@ -239,6 +264,34 @@ FDSP_EXPORT void vorbis_inverse_coupling_c(float *mag, float *ang, unsigned int 
             }
         }
     }
+}
+
+void sbr_qmf_deint_neg_c(float *v, const float *src)
+{
+    unsigned int i;
+    for (i = 0; i < 32; i++) {
+        v[     i] =  src[63 - 2*i    ];
+        v[63 - i] = -src[63 - 2*i - 1];
+    }
+}
+
+void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5])
+{
+    float real_sum2 = 0.0f, imag_sum2 = 0.0f;
+    float real_sum1 = 0.0f, imag_sum1 = 0.0f, real_sum0 = 0.0f;
+    unsigned int i;
+    for (i = 1; i < 38; i++) {
+        real_sum0 += x[i].re * x[i  ].re + x[i].im * x[i  ].im;
+        real_sum1 += x[i].re * x[i+1].re + x[i].im * x[i+1].im;
+        imag_sum1 += x[i].re * x[i+1].im - x[i].im * x[i+1].re;
+        real_sum2 += x[i].re * x[i+2].re + x[i].im * x[i+2].im;
+        imag_sum2 += x[i].re * x[i+2].im - x[i].im * x[i+2].re;
+    }
+    phi[2] = real_sum2;
+    phi[3] = imag_sum2;
+    phi[4] = real_sum0;
+    phi[0] = real_sum1;
+    phi[1] = imag_sum1;
 }
 
 FDSP_EXPORT void conv_fltp_to_flt_2ch_c(float *dst, float *src[2], unsigned int len)

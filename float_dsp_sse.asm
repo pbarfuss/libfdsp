@@ -202,11 +202,38 @@
 SECTION .note.GNU-stack noalloc noexec nowrite progbits
 %endif
 
+%macro CAT_XDEFINE 3
+    %xdefine %1%2 %3
+%endmacro
+
+%macro CAT_UNDEF 2
+    %undef %1%2
+%endmacro
+
+; base-4 constants for shuffles
+%assign i 0
+%rep 256
+    %assign j ((i>>6)&3)*1000 + ((i>>4)&3)*100 + ((i>>2)&3)*10 + (i&3)
+    %if j < 10
+        CAT_XDEFINE q000, j, i
+    %elif j < 100
+        CAT_XDEFINE q00, j, i
+    %elif j < 1000
+        CAT_XDEFINE q0, j, i
+    %else
+        CAT_XDEFINE q, j, i
+    %endif
+%assign i i+1
+%endrep
+%undef i
+%undef j
+
 section .rodata align=16
 
 pdw_80000000:    times 4 dd 0x80000000
 pdw_7fffffff:    times 4 dd 0x7fffffff
 ps_m1p1m1p1: dd 0x80000000, 0x0, 0x80000000, 0x0
+ps_p1p1p1m1: dd 0x0, 0x0, 0x0, 0x80000000
 
 align 16
 ps_25: times 4 dd 0.25
@@ -214,6 +241,15 @@ ps_25: times 4 dd 0.25
 section .text align=16
 
 %xdefine SUFFIX _sse
+
+    global disable_denormals
+    [type disable_denormals function]
+    align 16 
+disable_denormals:
+	stmxcsr	[rsp - 4]
+	or qword [rsp - 4], 0x8000
+	ldmxcsr	[rsp - 4]
+    ret
 
 ;-----------------------------------------------------------------------------
 ; void vector_fmul(float *dst, const float *src0, const float *src1, uint32_t len)
@@ -278,13 +314,11 @@ cglobal vector_fmul_scalar, 3,3,2
 %else
 cglobal vector_fmul_scalar, 4,4,3
 %define len r3
-%endif
-%ifdef ARCH_X86_64
 %ifdef WIN64
     movaps      xmm0, xmm2
-%endif
 %else
     movss       xmm0, [esp + stack_offset + 0x10] 
+%endif
 %endif
     shufps      xmm0, xmm0, 0
     lea          len, [len*4-0x10]
@@ -410,6 +444,30 @@ cglobal vector_fmul_window, 5,6,6
 cendfunc vector_fmul_window
 
 ;-----------------------------------------------------------------------------
+; void butterflies_float(float *src0, float *src1, uint32_t len);
+;-----------------------------------------------------------------------------
+cglobal butterflies_float, 3,3,3
+    test        r2, r2 
+    jz .end
+    shl         r2, 2
+    lea         r0, [r0 + r2]
+    lea         r1, [r1 + r2]
+    neg         r2 
+.loop:
+    movaps    xmm0, [r0 + r2]
+    movaps    xmm1, [r1 + r2]
+    movaps    xmm2, xmm0
+    subps     xmm2, xmm1
+    addps     xmm0, xmm1
+    movaps      [r1 + r2], xmm2
+    movaps      [r0 + r2], xmm0
+    add         r2, 0x10
+    jl .loop
+.end:
+    RET
+cendfunc butterflies_float
+
+;-----------------------------------------------------------------------------
 ; float scalarproduct_float(const float *v1, const float *v2, uint32_t len)
 ;-----------------------------------------------------------------------------
 cglobal scalarproduct_float, 3,3,3
@@ -437,28 +495,151 @@ cglobal scalarproduct_float, 3,3,3
 cendfunc scalarproduct_float
 
 ;-----------------------------------------------------------------------------
-; void butterflies_float(float *src0, float *src1, uint32_t len);
+; float scalarproduct_symmetric_fir_float(const float *v1, const float *v2, uint32_t len)
 ;-----------------------------------------------------------------------------
-cglobal butterflies_float, 3,3,3
-    test        r2, r2 
-    jz .end
-    shl         r2, 2
-    lea         r0, [r0 + r2]
-    lea         r1, [r1 + r2]
-    neg         r2 
+cglobal scalarproduct_symmetric_fir_float, 3,4,3
+    shl        r2, 2
+    lea        r4, [2*r2-0x08]
+    xor        r3, r3
+    xorps    xmm0, xmm0
 .loop:
-    movaps    xmm0, [r0 + r2]
-    movaps    xmm1, [r1 + r2]
-    movaps    xmm2, xmm0
-    subps     xmm2, xmm1
-    addps     xmm0, xmm1
-    movaps      [r1 + r2], xmm2
-    movaps      [r0 + r2], xmm0
-    add         r2, 0x10
+    movups   xmm1, [r0+r3]
+    movups   xmm2, [r0+r4]
+    shufps   xmm2, xmm2, 0x1b
+    addps    xmm1, xmm2
+    movaps   xmm3, [r1+r3]
+    mulps    xmm1, xmm3
+    addps    xmm0, xmm1
+    add        r3, 0x10
+    sub        r4, 0x10
+    cmp        r3, r2 
     jl .loop
-.end:
+    movaps   xmm1, xmm0
+    shufps   xmm1, xmm0, 0x1b
+    addps    xmm1, xmm0
+    movhlps  xmm0, xmm1
+    addps    xmm0, xmm1
+    movss    xmm2, [r0+r2]
+    mulss    xmm2, [r1+r2]
+    addss    xmm0, xmm2
+%ifndef ARCH_X86_64
+    movss     [esp + stack_offset + 8],  xmm0
+    fld dword [esp + stack_offset + 8] 
+%endif
     RET
-cendfunc butterflies_float
+cendfunc scalarproduct_symmetric_fir_float
+
+;-----------------------------------------------------
+;void vector_clipf(float *dst, const float *src, float min, float max, uint32_t len)
+;-----------------------------------------------------
+%ifdef WIN64
+cglobal vector_clipf, 5,6,6
+    SWAP 0, 2
+    SWAP 1, 3
+%else
+cglobal vector_clipf, 3,4,6
+%ifdef ARCH_X86_32
+    movss   xmm0, [esp + stack_offset + 0x10] 
+    movss   xmm1, [esp + stack_offset + 0x14] 
+    movss     r2, [esp + stack_offset + 0x18] 
+%endif
+    shl r2, 2
+    xor r3, r3
+%endif
+
+    shufps xmm0, xmm0, 0x0
+    shufps xmm1, xmm1, 0x0
+.loop:
+    movaps    xmm2,  [r1+r2     ]
+    movaps    xmm3,  [r1+r2+0x10]
+    movaps    xmm4,  [r1+r2+0x20]
+    movaps    xmm5,  [r1+r2+0x30]
+    maxps     xmm2, xmm0
+    maxps     xmm3, xmm0
+    maxps     xmm4, xmm0
+    maxps     xmm5, xmm0
+    minps     xmm2, xmm1
+    minps     xmm3, xmm1
+    minps     xmm4, xmm1
+    minps     xmm5, xmm1
+    movaps    [r0+r2     ], xmm2
+    movaps    [r0+r2+0x10], xmm3
+    movaps    [r0+r2+0x20], xmm4
+    movaps    [r0+r2+0x30], xmm5
+    add        r3, 0x40
+    cmp        r3, r2 
+    jl .loop
+    RET
+cendfunc vector_clipf
+
+cglobal scalarproduct_cplx, 3,3,3
+    shl      r2, 2
+    xor      r3, r3
+    xorps    xmm0, xmm0
+    xorps    xmm1, xmm1
+.loop:
+    movups   xmm2, [r0+2*r3] ; [r0 i0 r1 i1]
+    movups   xmm5, [r0+2*r3+0x10] ; [r2 i2 r3 i3]
+    movaps   xmm6, [r1+r3]
+    movaps   xmm7, [r1+r3+0x10]
+    movaps   xmm3, xmm2
+    shufps   xmm2, xmm5, q3131 ; {r0,r1,r2,r3}
+    shufps   xmm3, xmm5, q2020 ; {i0,i1,i2,i3}
+    mulps    xmm2, xmm6
+    mulps    xmm3, xmm6
+    addps    xmm1, xmm2
+    addps    xmm0, xmm3
+    movups   xmm2, [r0+2*r3+0x20] ; [r0 i0 r1 i1]
+    movups   xmm5, [r0+2*r3+0x30] ; [r2 i2 r3 i3]
+    movaps   xmm3, xmm2
+    shufps   xmm2, xmm5, q3131 ; {r0,r1,r2,r3}
+    shufps   xmm3, xmm5, q2020 ; {i0,i1,i2,i3}
+    mulps    xmm2, xmm7
+    mulps    xmm3, xmm7
+    addps    xmm1, xmm2
+    addps    xmm0, xmm3
+    add      r3, 0x20
+    cmp      r3, r2
+    jl .loop
+
+    shufps   xmm0, xmm1, 0x11
+    shufps   xmm1, xmm0, 0xbb
+    addps    xmm1, xmm0
+
+    unpcklps xmm0, xmm1 ; { 00 01 10 11 }
+    movhlps  xmm1, xmm0 ; { 10 11 30 31 }
+    addps    xmm0, xmm1 ; { 00+10 01+11 ? ? }
+
+%ifndef ARCH_X86_64
+    movss     r0m,  xmm0
+    fld dword r0m
+%endif
+    RET
+cendfunc scalarproduct_cplx
+
+cglobal vector_fmul_cplx, 4,4,2, dst, src0, src1, len
+    shl      r3, 2
+    xor      r4, r4
+.loop:
+    movaps   xmm1, [r1+2*r4] ; [r0 i0 r1 i1]
+    movaps   xmm2, [r1+2*r4+0x10] ; [r2 i2 r3 i3]
+    movaps   xmm0, [r2+r4]
+    movaps   xmm3, xmm1
+    shufps   xmm1, xmm2, q3131 ; {r0,r1,r2,r3}
+    shufps   xmm3, xmm2, q2020 ; {i0,i1,i2,i3}
+    mulps    xmm1, xmm0
+    mulps    xmm3, xmm0
+    movaps   xmm2, xmm3
+    unpcklps xmm2, xmm1
+    unpckhps xmm3, xmm1
+    movaps   [r0+2*r4], xmm2 ; [r0 i0 r1 i1]
+    movaps   [r0+2*r4+0x10], xmm3 ; [r2 i2 r3 i3]
+
+    add      r4, 0x10
+    cmp      r4, r3
+    jl .loop
+    RET
+cendfunc vector_fmul_cplx
 
 ;-----------------------------------------------------------------------------
 ; void sbr_sum64x5(float *z)
@@ -652,7 +833,7 @@ cglobal sbrenc_qmf_deint_bfly, 2,5,8
 %endif
     mov                 r4, 64*4-32
     lea                 r3, [r0 + 64*4]
-    lea                r2, [r1 + 64*4]
+    lea                 r2, [r1 + 64*4]
 .loop:
     movaps            xmm0, [r1+r4]
     movaps            xmm1, [r2]
@@ -681,7 +862,7 @@ cglobal sbrenc_qmf_deint_bfly, 2,5,8
     movaps       [r3+0x10], xmm5
     movaps         [r0+r4], xmm0
     movaps    [r0+r4+0x10], xmm4 
-    add                r2, 0x20
+    add                 r2, 0x20
     add                 r3, 0x20
     sub                 r4, 0x20
     jge            .loop
@@ -853,6 +1034,105 @@ cglobal sbr_qmf_synthesis_window, 4,5,2
     RET
 cendfunc sbr_qmf_synthesis_window
 
+cglobal sbr_qmf_deint_neg, 2,4,4
+    mov        r2, -128
+    mov        r3, 0x70
+    add        r1, 0x100
+    movaps   xmm3, [pdw_80000000]
+.loop:
+    movaps   xmm0, [r1 + 2*r2]
+    movaps   xmm1, [r1 + 2*r2 + 0x10]
+    movaps   xmm2, xmm0
+    shufps   xmm2, xmm1, q2020
+    shufps   xmm1, xmm0, q1313
+    xorps    xmm2, xmm3
+    movaps   [r0 + r3], xmm1
+    movaps   [r0 + r2 + 0x100], xmm2
+    sub        r3, 0x10 
+    add        r2, 0x10 
+    jl      .loop
+    RET
+cendfunc sbr_qmf_deint_neg
+
+cglobal sbr_autocorrelate, 2,3,8
+    movlps  xmm1, [r0+16]
+    shufps  xmm1, xmm1, q0110
+
+    movlps  xmm7, [r0+8 ]
+    movlps  xmm2, [r0+24]
+    shufps  xmm7, xmm7, q1010
+    shufps  xmm2, xmm2, q0110
+    movaps  xmm6, xmm7
+    mulps   xmm6, xmm1   ; real_sum1  = x[1][0] * x[2][0], x[1][1] * x[2][1]; imag_sum1 += x[1][0] * x[2][1], x[1][1] * x[2][0]
+    movaps  xmm5, xmm7
+    mulps   xmm7, xmm7   ; real_sum0  = x[1][0] * x[1][0], x[1][1] * x[1][1];
+    mulps   xmm5, xmm2   ; real_sum2 += x[1][0] * x[3][0], x[1][1] * x[3][1]; imag_sum2 += x[1][0] * x[3][1], x[1][1] * x[3][0]
+    mov   r2, 37*8
+    add   r0, r2 
+    neg   r2 
+    add   r2, 8
+
+align 16
+.loop:
+    add     r2, 8
+    movlps  xmm0, [r0+r2+16]
+    movlhps xmm1, xmm1
+    shufps  xmm0, xmm0, q0110
+    movaps  xmm3, xmm1
+    movaps  xmm4, xmm1
+    mulps   xmm3, xmm2
+    mulps   xmm4, xmm0
+    mulps   xmm1, xmm1
+    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
+    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
+    addps   xmm7, xmm1       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    add     r2, 8
+    movlps  xmm1, [r0+r2+16]
+    movlhps xmm2, xmm2
+    shufps  xmm1, xmm1, q0110
+    movaps  xmm3, xmm2
+    movaps  xmm4, xmm2
+    mulps   xmm3, xmm0
+    mulps   xmm4, xmm1
+    mulps   xmm2, xmm2
+    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
+    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
+    addps   xmm7, xmm2       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    add     r2, 8
+    movlps  xmm2, [r0+r2+16]
+    movlhps xmm0, xmm0
+    shufps  xmm2, xmm2, q0110
+    movaps  xmm3, xmm0
+    movaps  xmm4, xmm0
+    mulps   xmm3, xmm1
+    mulps   xmm4, xmm2
+    mulps   xmm0, xmm0
+    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
+    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
+    addps   xmm7, xmm0       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    jl .loop
+
+    xorps   xmm5, [ps_p1p1p1m1]
+    xorps   xmm6, [ps_p1p1p1m1]
+
+    movaps  xmm2, xmm5
+    movaps  xmm0, xmm6
+    shufps  xmm2, xmm2, q0301
+    shufps  xmm0, xmm0, q0301
+    addps   xmm5, xmm2
+    addps   xmm6, xmm0
+
+    shufps  xmm6, xmm5, q2020
+    movaps  [r1     ], xmm6
+
+    movss   xmm2, xmm7
+    shufps  xmm7, xmm7, q0001
+    addss   xmm7, xmm2
+
+    movss   [r1+0x10], xmm7
+    RET
+cendfunc sbr_autocorrelate
+
 ;------------------------------------------------------------------------------
 ; void conv_fltp_to_flt_2ch(float *dst, float **src, unsigned int len);
 ;------------------------------------------------------------------------------
@@ -911,10 +1191,9 @@ cglobal conv_s16p_to_s16_2ch, 3,5,4
 .loop:
     movaps     xmm0, [r1+r3]   ; xmm0 = 0, 2, 4, 6, 8, 10, 12, 14
     movaps     xmm1, [r4+r3]   ; xmm1 = 1, 3, 5, 7, 9, 11, 13, 15
-    movhlps    xmm2, xmm0      ; xmm2 = 8, 10, 12, 12, x, x, x, x
-    movhlps    xmm3, xmm1      ; xmm3 = 9, 11, 13, 15, x, x, x, x
+    movaps     xmm2, xmm0
     punpcklwd  xmm0, xmm1      ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
-    punpcklwd  xmm2, xmm3      ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
+    punpckhwd  xmm2, xmm1      ; xmm0 = 0, 1, 2, 3, 4, 5, 6, 7
     movaps  [r0+2*r3     ], xmm0
     movaps  [r0+2*r3+0x10], xmm2
     add        r3, 0x10

@@ -81,6 +81,8 @@ FDSP_EXPORT void sbrenc_sum128x5_c(float *z);
 FDSP_EXPORT void sbrenc_qmf_deint_bfly_c(float *v, const float *src);
 FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low, float alpha[4], uint32_t start, uint32_t end);
 FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window, uint32_t n);
+FDSP_EXPORT void sbr_qmf_deint_neg_c(float *v, const float *src);
+FDSP_EXPORT void sbr_autocorrelate_c(const FFTComplex x[40], float acorr_sums[5]);
 
 FDSP_EXPORT void sbr_sum64x5_sse(float *z);
 FDSP_EXPORT void sbr_qmf_pre_shuffle_sse(float *z);
@@ -92,6 +94,8 @@ FDSP_EXPORT void sbrenc_sum128x5_sse(float *z);
 FDSP_EXPORT void sbrenc_qmf_deint_bfly_sse(float *v, const float *src);
 FDSP_EXPORT void sbr_hf_gen_sse(FFTComplex *X_high, FFTComplex *X_low, float alpha[4], uint32_t start, uint32_t end);
 FDSP_EXPORT void sbr_qmf_synthesis_window_sse(float *out, float *v, float *sbr_qmf_window, uint32_t n);
+FDSP_EXPORT void sbr_qmf_deint_neg_sse(float *v, const float *src);
+FDSP_EXPORT void sbr_autocorrelate_sse(const FFTComplex x[40], float acorr_sums[5]);
 
 FDSP_EXPORT void sbr_sum64x5_neon(float *z);
 FDSP_EXPORT void sbr_qmf_pre_shuffle_neon(float *z);
@@ -103,6 +107,8 @@ FDSP_EXPORT void sbrenc_sum128x5_neon(float *z);
 FDSP_EXPORT void sbrenc_qmf_deint_bfly_neon(float *v, const float *src);
 FDSP_EXPORT void sbr_hf_gen_neon(FFTComplex *X_high, FFTComplex *X_low, float alpha[4], uint32_t start, uint32_t end);
 FDSP_EXPORT void sbr_qmf_synthesis_window_neon(float *out, float *v, float *sbr_qmf_window, uint32_t n);
+FDSP_EXPORT void sbr_qmf_deint_neg_neon(float *v, const float *src);
+FDSP_EXPORT void sbr_autocorrelate_neon(const FFTComplex x[40], float acorr_sums[5]);
 
 FDSP_EXPORT void conv_fltp_to_flt_2ch_c(float *dst, float *src[2], unsigned int len);
 FDSP_EXPORT void conv_flt_to_fltp_2ch_c(float *dst[2], float *src, unsigned int len);
