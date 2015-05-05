@@ -62,7 +62,7 @@ function vector_fmac_scalar_neon, export=1
         bx              lr
 endfunc
 function vector_fmul_scalar_neon, export=1
-        vdup.32 q8, r2
+        vdup.32  q8, r2
 1:
         vld1.32 {q0},[r1]!
         vmul.f32 q0, q0, q8
@@ -555,7 +555,8 @@ function sbr_qmf_deint_neg_neon, export=1
         bx              lr
 endfunc
 function sbr_autocorrelate_neon, export=1
-        vld1.32         {q0},     [r0,:128]!
+        vld1.32         {q0},     [r0]!
+        vmov.f32        d0,  #0.0
         vmov.f32        q1,  #0.0
         vmov.f32        q3,  #0.0
         vmov.f32        d20, #0.0
@@ -564,7 +565,7 @@ function sbr_autocorrelate_neon, export=1
         vmov            q11, q0
         mov             r12, #36
 1:
-        vld1.32         {q2},     [r0,:128]!
+        vld1.32         {q2},     [r0]!
         vrev64.32       q12, q2
         vmla.f32        q10, q2,  q2
         vmla.f32        d2,  d1,  d4
@@ -578,7 +579,7 @@ function sbr_autocorrelate_neon, export=1
         vmov            q0,  q2
         subs            r12, r12, #2
         bgt             1b
-        vld1.32         {q2},     [r0,:128]!
+        vld1.32         {q2},     [r0]!
         vrev64.32       q12, q2
         vmla.f32        d2,  d1,  d4
         vmla.f32        d3,  d1,  d24
@@ -586,29 +587,18 @@ function sbr_autocorrelate_neon, export=1
         vmla.f32        d7,  d0,  d24
         vadd.f32        d20, d20, d21
         vrev64.32       d18, d17
-        vmla.f32        d6,  d1,  d5
-        vmla.f32        d7,  d1,  d25
-        vmov            q0,  q1
-        vmla.f32        d0,  d16, d17
-        vmla.f32        d1,  d16, d18
-        vmla.f32        d2,  d4,  d5
-        vmla.f32        d3,  d4,  d25
         vneg.f32        s15, s15
         vmov            d21, d20
         vpadd.f32       d0,  d0,  d2
         vpadd.f32       d7,  d6,  d7
         vtrn.32         d1,  d3
         vsub.f32        d6,  d1,  d3
-        vmla.f32        d20, d22, d22
-        vmla.f32        d21, d4,  d4
         vtrn.32         d0,  d6
         vpadd.f32       d20, d20, d21
-        vst1.32         {q3},     [r1,:128]!
-        vst1.32         {d20[1]}, [r1,:32]
-        add             r1,  r1,  #2*4
-        vst1.32         {d0},     [r1,:64]
-        add             r1,  r1,  #4*4
-        vst1.32         {d20[0]}, [r1,:32]
+        vst1.32         {d6},     [r1]!
+        vst1.32         {d7[0]},  [r1]!
+        vst1.32         {d7[1]},  [r1]!
+        vst1.32         {d20[0]}, [r1]
         bx              lr
 endfunc
 
