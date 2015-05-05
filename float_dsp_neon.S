@@ -602,3 +602,41 @@ function sbr_autocorrelate_neon, export=1
         bx              lr
 endfunc
 
+function conv_fltp_to_flt_2ch_neon, export=1
+	ldr	r12, [r1, #0]
+	ldr	r1, [r1, #4]
+1:
+    vld1.32 {q0}, [r1]!
+    vld1.32 {q1}, [r12]!
+    vrev64.32   q0, q0
+    vrev64.32   q1, q1
+    vtrn.32 q1, q0
+    vst1.32 {d0}, [r0]!
+    vst1.32 {d2}, [r0]!
+    vst1.32 {d1}, [r0]!
+    vst1.32 {d3}, [r0]!
+    subs r2, r2, #4
+    beq 2f
+    b 1b
+2:
+    bx lr
+endfunc
+
+function conv_flt_to_fltp_2ch_neon, export=1
+	ldr	r12, [r0, #0]
+	ldr	r0, [r0, #4]
+1:
+    vld1.32 {q0,q1}, [r1]!
+    vtrn.32 d0, d2
+    vtrn.32 d1, d3
+    vtrn.32 d0, d1
+    vtrn.32 d2, d3
+    vst1.32 {q0}, [r12]!
+    vst1.32 {q1}, [r0]!
+    subs r2, r2, #4
+    beq 2f
+    b 1b
+2:
+    bx lr
+endfunc
+
