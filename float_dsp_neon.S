@@ -2,6 +2,8 @@
         .syntax unified
 .eabi_attribute 24, 1
 .eabi_attribute 25, 1
+.section .note.GNU-stack,"",%progbits @ Mark stack as non-executable
+
 .macro function name, export=0
 .macro endfunc
 .size \name, . - \name
@@ -411,48 +413,39 @@ function sbr_qmf_synthesis_window_neon, export=1
         add r12, r1, #192*4
         vld1.32 {q2}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q2, q2, q1
-        vadd.f32 q10, q2, q10
+        vmla.f32 q10, q2, q1
         add r12, r1, #256*4
         vld1.32 {q8}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q8, q8, q1
-        vadd.f32 q10, q8, q10
+        vmla.f32 q10, q8, q1
         add r12, r1, #448*4
         vld1.32 {q2}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q2, q2, q1
-        vadd.f32 q10, q2, q10
+        vmla.f32 q10, q2, q1
         add r12, r1, #512*4
         vld1.32 {q8}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q8, q8, q1
-        vadd.f32 q10, q8, q10
+        vmla.f32 q10, q8, q1
         add r12, r1, #704*4
         vld1.32 {q2}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q2, q2, q1
-        vadd.f32 q10, q2, q10
+        vmla.f32 q10, q2, q1
         add r12, r1, #768*4
         vld1.32 {q8}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q8, q8, q1
-        vadd.f32 q10, q8, q10
+        vmla.f32 q10, q8, q1
         add r12, r1, #960*4
         vld1.32 {q2}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q2, q2, q1
-        vadd.f32 q10, q2, q10
+        vmla.f32 q10, q2, q1
         add r12, r1, #1024*4
         vld1.32 {q8}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q8, q8, q1
-        vadd.f32 q10, q8, q10
+        vmla.f32 q10, q8, q1
         add r12, r1, #1216*4
         vld1.32 {q2}, [r12]
         vld1.32 {q1}, [r4], r5
-        vmul.f32 q2, q2, q1
-        vadd.f32 q10, q2, q10
+        vmla.f32 q10, q2, q1
         vst1.32 {q10}, [r0]!
 
         subs r3, r3, #4
@@ -525,11 +518,11 @@ function sbr_qmf_deint_neg_neon, export=1
         mov             r12, #32
         vmov.i32        d2,  #1<<31
 1:
-        vld2.32         {d0,d1},  [r1,:128], r3
+        vld2.32         {d0,d1},  [r1], r3
         veor            d0,  d0,  d2
         vrev64.32       d1,  d1
-        vst1.32         {d0},     [r2,:64]
-        vst1.32         {d1},     [r0,:64]!
+        vst1.32         {d0},     [r2]
+        vst1.32         {d1},     [r0]!
         sub             r2,  r2,  #8
         subs            r12, r12, #2
         bgt             1b
@@ -589,16 +582,13 @@ function conv_fltp_to_flt_2ch_neon, export=1
 1:
     vld1.32 {q0,q1}, [r1]!
     vld1.32 {q2,q3}, [r12]!
-    vzip.32 q0, q2
-    vzip.32 q1, q3
-    vrev64.32 q0, q0
-    vrev64.32 q2, q2
-    vrev64.32 q1, q1
-    vrev64.32 q3, q3
-    vswp.32 q1, q2
-    vst1.32 {q0,q1}, [r0]!
-    vst1.32 {q2,q3}, [r0]!
-    subs r2, r2, #8
+    vld1.32 {q6,q7}, [r1]!
+    vld1.32 {q8,q9}, [r12]!
+    vst2.32 {q0,q2}, [r0]!
+    vst2.32 {q1,q3}, [r0]!
+    vst2.32 {q6,q8}, [r0]!
+    vst2.32 {q7,q9}, [r0]!
+    subs r2, r2, #16
     beq 2f
     b 1b
 2:
