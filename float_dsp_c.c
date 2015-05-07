@@ -121,12 +121,14 @@ FDSP_EXPORT void sbr_sum64x5_c(float *z)
 FDSP_EXPORT void sbr_qmf_pre_shuffle_c(float *z)
 {
     unsigned int k;
-    z[64] = z[0];
-    z[65] = z[1];
-    for (k = 1; k < 32; k++) {
+    float tmp1 = z[0], tmp2 = z[1];
+    //z[64] = z[0];
+    //z[65] = z[1];
+    for (k = 0; k < 32; k++) {
         z[64+2*k  ] = -z[64 - k];
         z[64+2*k+1] =  z[ k + 1];
     }
+    z[64] = tmp1;
 }
 
 FDSP_EXPORT void sbr_qmf_post_shuffle_c(FFTComplex W[32], float *z)
@@ -180,19 +182,17 @@ FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
 
 FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window, unsigned int k)
 {
-    unsigned int n;
-    for (n = 0; n < k; n++) {
-        float t  = v[n     ]*sbr_qmf_window[n];
-              t += v[n+ 3*k]*sbr_qmf_window[n+  k];
-              t += v[n+ 4*k]*sbr_qmf_window[n+2*k];
-              t += v[n+ 7*k]*sbr_qmf_window[n+3*k];
-              t += v[n+ 8*k]*sbr_qmf_window[n+4*k];
-              t += v[n+11*k]*sbr_qmf_window[n+5*k];
-              t += v[n+12*k]*sbr_qmf_window[n+6*k];
-              t += v[n+15*k]*sbr_qmf_window[n+7*k];
-              t += v[n+16*k]*sbr_qmf_window[n+8*k];
-              t += v[n+19*k]*sbr_qmf_window[n+9*k];
-        out[n] = t;
+    const size_t _k = ((k == 32) ? 32 : 64);
+    unsigned int n, mask = (k-1);
+    for (n = 0; n < _k; n++) {
+        out[n] = v[n]*sbr_qmf_window[n] + v[n+19*_k]*sbr_qmf_window[n+9*_k];
+    }
+    for (n = 0; n < 2*_k; n++) {
+        float t  = v[n+ 3*_k]*sbr_qmf_window[n+  _k];
+              t += v[n+ 7*_k]*sbr_qmf_window[n+3*_k];
+              t += v[n+11*_k]*sbr_qmf_window[n+5*_k];
+              t += v[n+15*_k]*sbr_qmf_window[n+7*_k];
+        out[n&mask] += t;
     }
 }
 
