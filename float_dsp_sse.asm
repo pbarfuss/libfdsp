@@ -997,41 +997,53 @@ cglobal sbr_qmf_synthesis_window, 4,5,2
     shl      r3, 2
     xor      r4, r4
 .loop:
-    movaps  xmm0, [r1 + r4]
-    mulps   xmm0, [r2 + r4]
-    movaps  xmm1, [r1 + r4 + 768]
-    mulps   xmm1, [r2 + r4 + 256]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 1024]
-    mulps   xmm1, [r2 + r4 + 512]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 1792]
-    mulps   xmm1, [r2 + r4 + 768]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 2048]
-    mulps   xmm1, [r2 + r4 + 1024]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 2816]
-    mulps   xmm1, [r2 + r4 + 1280]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 3072]
-    mulps   xmm1, [r2 + r4 + 1536]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 3840]
-    mulps   xmm1, [r2 + r4 + 1792]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 4096]
-    mulps   xmm1, [r2 + r4 + 2048]
-    addps   xmm0, xmm1
-    movaps  xmm1, [r1 + r4 + 4864]
-    mulps   xmm1, [r2 + r4 + 2304]
-    addps   xmm0, xmm1
-    movaps    [r0 + r4], xmm0
+     movaps  xmm0, [r1 + r4 + 4*192]
+     movaps  xmm2, [r1 + r4 + 4*256]
+     mulps   xmm0, [r2 + r4 + 4*64]
+     mulps   xmm2, [r2 + r4 + 4*128]
 
-    add      r4, 0x10
-    cmp      r4, r3 
-    jl .loop
-    RET
+     movaps  xmm1, [r1 + r4 + 4*448]
+     movaps  xmm3, [r1 + r4 + 4*512]
+     mulps   xmm1, [r2 + r4 + 4*192]
+     mulps   xmm3, [r2 + r4 + 4*256]
+     addps   xmm0, xmm1
+     addps   xmm2, xmm3
+
+     movaps  xmm1, [r1 + r4 + 4*704]
+     movaps  xmm3, [r1 + r4 + 4*768]
+     mulps   xmm1, [r2 + r4 + 4*320]
+     mulps   xmm3, [r2 + r4 + 4*384]
+     addps   xmm0, xmm1
+     addps   xmm2, xmm3
+
+     movaps  xmm1, [r1 + r4 + 4*960]
+     movaps  xmm3, [r1 + r4 + 4*1024]
+     mulps   xmm1, [r2 + r4 + 4*448]
+     mulps   xmm3, [r2 + r4 + 4*512]
+     addps   xmm0, xmm1
+     addps   xmm2, xmm3
+     movaps    [r0 + r4], xmm0
+     movaps    [r0 + r4 + 256], xmm2
+     add      r4, 0x10
+     cmp      r4, r3 
+     jl .loop
+
+    xor      r4, r4
+.loop2:
+     movaps   xmm0, [r0 + r4]
+     movaps   xmm1, [r0 + r4 + 256]
+     movaps   xmm2, [r1 + r4]
+     mulps    xmm2, [r2 + r4]
+     movaps   xmm3, [r1 + r4 + 4864]
+     mulps    xmm3, [r2 + r4 + 2304]
+     addps    xmm2, xmm3
+     addps    xmm0, xmm2
+     addps    xmm0, xmm1
+     movaps   [r0 + r4], xmm0
+     add      r4, 0x10
+     cmp      r4, r3 
+     jl .loop2
+     RET
 cendfunc sbr_qmf_synthesis_window
 
 cglobal sbr_qmf_deint_neg, 2,4,4
