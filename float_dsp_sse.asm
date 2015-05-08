@@ -995,49 +995,35 @@ cendfunc sbr_hf_gen
 ; void sbr_qmf_synthesis_window_sse(float *out, float *v, float *sbr_qmf_window, unsigned int n)
 ;-----------------------------------------------------------------------------
 cglobal sbr_qmf_synthesis_window, 4,5,2
-    shl      r3, 2
+    shl      r3, 3
     xor      r4, r4
 .loop:
-     movaps  xmm0, [r1 + 2*r4 + 4*192]
-     mulps   xmm0, [r2 + 2*r4 + 4*64]
-     movaps  xmm2, [r1 + 2*r4 + 4*192 + 16]
-     mulps   xmm2, [r2 + 2*r4 + 4*64 + 16]
-
-     movaps  xmm1, [r1 + 2*r4 + 4*448]
-     mulps   xmm1, [r2 + 2*r4 + 4*192]
-     addps   xmm0, xmm1
-     movaps  xmm3, [r1 + 2*r4 + 4*448 + 16]
-     mulps   xmm3, [r2 + 2*r4 + 4*192 + 16]
+     movaps  xmm0, [r1 + r4 + 12*64]
+     movaps  xmm1, [r1 + r4 + 28*64]
+     movaps  xmm2, [r1 + r4 + 44*64]
+     movaps  xmm3, [r1 + r4 + 60*64]
+     mulps   xmm0, [r2 + r4 +  4*64]
+     mulps   xmm1, [r2 + r4 + 12*64]
+     mulps   xmm2, [r2 + r4 + 20*64]
+     mulps   xmm3, [r2 + r4 + 28*64]
      addps   xmm2, xmm3
-
-     movaps  xmm1, [r1 + 2*r4 + 4*704]
-     mulps   xmm1, [r2 + 2*r4 + 4*320]
      addps   xmm0, xmm1
-     movaps  xmm3, [r1 + 2*r4 + 4*704 + 16]
-     mulps   xmm3, [r2 + 2*r4 + 4*320 + 16]
-     addps   xmm2, xmm3
+     addps   xmm0, xmm2
 
-     movaps  xmm1, [r1 + 2*r4 + 4*960]
-     mulps   xmm1, [r2 + 2*r4 + 4*448]
-     addps   xmm0, xmm1
-     movaps  xmm3, [r1 + 2*r4 + 4*960 + 16]
-     mulps   xmm3, [r2 + 2*r4 + 4*448 + 16]
-     addps   xmm2, xmm3
-
-     movaps  [r0 + 2*r4], xmm0
-     movaps  [r0 + 2*r4 + 0x10], xmm2
+     movaps  [r0 + r4], xmm0
      add      r4, 0x10
      cmp      r4, r3 
      jl .loop
 
+    shr      r3, 1
     xor      r4, r4
 .loop2:
      movaps   xmm0, [r0 + r4]
-     movaps   xmm1, [r0 + r4 + 256]
+     movaps   xmm1, [r0 + r4 + 4*64]
      movaps   xmm4, [r1 + r4]
      mulps    xmm4, [r2 + r4]
-     movaps   xmm5, [r1 + r4 + 4864]
-     mulps    xmm5, [r2 + r4 + 2304]
+     movaps   xmm5, [r1 + r4 + 76*64]
+     mulps    xmm5, [r2 + r4 + 36*64]
      addps    xmm4, xmm5
      addps    xmm0, xmm4
      addps    xmm0, xmm1
@@ -1241,7 +1227,7 @@ cglobal conv_s16_to_s16p_2ch, 3,5,3
     cmp        r3, r2 
     jl .loop
     RET
-cendfunc conv_s16p_to_s16_2ch
+cendfunc conv_s16_to_s16p_2ch
 
 %ifdef FDSP_DLL
 %ifidn __OUTPUT_FORMAT__,win64
