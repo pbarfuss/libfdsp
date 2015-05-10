@@ -984,31 +984,30 @@ cendfunc sbr_hf_gen
 ; void sbr_qmf_synthesis_window_sse(float *out, float *v, float *sbr_qmf_window, unsigned int n)
 ;-----------------------------------------------------------------------------
 cglobal sbr_qmf_synthesis_window, 4,5,2
-    shl      r3, 3
+    shl      r3, 2
     xor      r4, r4
 .loop:
-     movaps  xmm0, [r1 + r4 + 12*64]
-     movaps  xmm1, [r1 + r4 + 28*64]
-     movaps  xmm2, [r1 + r4 + 44*64]
-     movaps  xmm3, [r1 + r4 + 60*64]
-     mulps   xmm0, [r2 + r4 +  4*64]
-     mulps   xmm1, [r2 + r4 + 12*64]
-     mulps   xmm2, [r2 + r4 + 20*64]
-     mulps   xmm3, [r2 + r4 + 28*64]
+     movaps  xmm0, [r1 + 2*r4 + 12*64]
+     movaps  xmm1, [r1 + 2*r4 + 28*64]
+     movaps  xmm2, [r1 + 2*r4 + 44*64]
+     movaps  xmm3, [r1 + 2*r4 + 60*64]
+     mulps   xmm0, [r2 + 2*r4 +  4*64]
+     mulps   xmm1, [r2 + 2*r4 + 12*64]
+     mulps   xmm2, [r2 + 2*r4 + 20*64]
+     mulps   xmm3, [r2 + 2*r4 + 28*64]
      addps   xmm2, xmm3
      addps   xmm0, xmm1
      addps   xmm0, xmm2
 
-     movaps  [r0 + r4], xmm0
-     add      r4, 0x10
+     movaps  [r0 + 2*r4], xmm0
+     add      r4, 0x08
      cmp      r4, r3 
      jl .loop
 
-    shr      r3, 1
     xor      r4, r4
 .loop2:
      movaps   xmm0, [r0 + r4]
-     movaps   xmm1, [r0 + r4 + 4*64]
+     movaps   xmm1, [r0 + r4 +  4*64]
      movaps   xmm4, [r1 + r4]
      mulps    xmm4, [r2 + r4]
      movaps   xmm5, [r1 + r4 + 76*64]
