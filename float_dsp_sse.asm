@@ -232,7 +232,7 @@ section .rodata align=16
 
 pdw_80000000:    times 4 dd 0x80000000
 pdw_7fffffff:    times 4 dd 0x7fffffff
-ps_m1p1m1p1: dd 0x80000000, 0x0, 0x80000000, 0x0
+ps_p1m1p1m1: dd 0x0, 0x80000000, 0x0, 0x80000000
 ps_p1p1p1m1: dd 0x0, 0x0, 0x0, 0x80000000
 
 align 16
@@ -690,11 +690,9 @@ cendfunc sbr_qmf_pre_shuffle
 ;-----------------------------------------------------------------------------
 cglobal sbr_qmf_post_shuffle, 2,3,4
     lea              r2, [r1 + (64-4)*4]
-    movaps          xmm3, [pdw_80000000]
 .loop:
     movaps          xmm0, [r1]
     movaps          xmm1, [r2]
-    xorps           xmm0, xmm3
     shufps          xmm1, xmm1, 0x1b
     movaps          xmm2, xmm0
     unpcklps        xmm2, xmm1
@@ -947,8 +945,8 @@ cglobal sbr_hf_gen, 5,5,8
     shufps     xmm4, xmm4, 0x55 ; (-a1 a1 -a1 a1)
     shufps     xmm1, xmm1, 0x00 ; (a2 a2 a2 a2)
     shufps     xmm2, xmm2, 0x00 ; (a0 a0 a0 a0)
-    xorps      xmm3, [ps_m1p1m1p1]
-    xorps      xmm4, [ps_m1p1m1p1]
+    xorps      xmm3, [ps_p1m1p1m1]
+    xorps      xmm4, [ps_p1m1p1m1]
 
     shl          r3, 3
     shl          r4, 3
@@ -1114,6 +1112,7 @@ align 16
     addps   xmm6, xmm0
 
     shufps  xmm6, xmm5, q2020
+    xorps   xmm6, [ps_p1m1p1m1]
     movaps  [r1     ], xmm6
 
     movss   xmm2, xmm7

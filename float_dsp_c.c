@@ -165,18 +165,12 @@ FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
     int i;
 
     for (i = start; i < end; i++) {
-        X_high[i].re =
-            X_low[i - 2].re * alpha[0] -
-            X_low[i - 2].im * alpha[1] +
-            X_low[i - 1].re * alpha[2] -
-            X_low[i - 1].im * alpha[3] +
-            X_low[i].re;
-        X_high[i].im =
-            X_low[i - 2].im * alpha[0] +
-            X_low[i - 2].re * alpha[1] +
-            X_low[i - 1].im * alpha[2] +
-            X_low[i - 1].re * alpha[3] +
-            X_low[i].im;
+        X_high[i].re = X_low[i].re +
+            X_low[i - 2].re * alpha[0] + X_low[i - 2].im * alpha[1] +
+            X_low[i - 1].re * alpha[2] + X_low[i - 1].im * alpha[3];
+        X_high[i].im = X_low[i].im + 
+            X_low[i - 2].im * alpha[0] - X_low[i - 2].re * alpha[1] +
+            X_low[i - 1].im * alpha[2] - X_low[i - 1].re * alpha[3];
     }
 }
 
@@ -281,11 +275,11 @@ void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5])
     float real_sum1 = 0.0f, imag_sum1 = 0.0f, real_sum0 = 0.0f;
     unsigned int i;
     for (i = 1; i < 38; i++) {
-        real_sum0 += x[i].re * x[i  ].re + x[i].im * x[i  ].im;
-        real_sum1 += x[i].re * x[i+1].re + x[i].im * x[i+1].im;
-        imag_sum1 += x[i].re * x[i+1].im - x[i].im * x[i+1].re;
-        real_sum2 += x[i].re * x[i+2].re + x[i].im * x[i+2].im;
-        imag_sum2 += x[i].re * x[i+2].im - x[i].im * x[i+2].re;
+        real_sum0 +=  x[i].re * x[i  ].re + x[i].im * x[i  ].im;
+        real_sum1 +=  x[i].re * x[i+1].re + x[i].im * x[i+1].im;
+        imag_sum1 += -x[i].re * x[i+1].im + x[i].im * x[i+1].re;
+        real_sum2 +=  x[i].re * x[i+2].re + x[i].im * x[i+2].im;
+        imag_sum2 += -x[i].re * x[i+2].im + x[i].im * x[i+2].re;
     }
     phi[2] = real_sum2;
     phi[3] = imag_sum2;
