@@ -270,14 +270,12 @@ function sbr_qmf_post_shuffle_neon, export=1
         add r2, r1, #60*4
         mov r3, #-16
         mov r12, #32
-        vmov.i32 q8, #1<<31
 1:
         pld [r2, #-32]
         vld1.32 {q1}, [r2], r3
         vld1.32 {q0}, [r1]!
         vrev64.32 q1, q1
         vswp d0, d1
-        veor q0, q0, q8
         vst2.32 {d1,d3}, [r0]!
         vst2.32 {d0,d2}, [r0]!
         subs r12, r12, #4
@@ -374,6 +372,7 @@ function sbr_hf_gen_neon, export=1
         vld1.32         {q0}, [r2]
 
         vtrn.32         d0,  d1
+        vneg.f32 d1, d1
         vneg.f32        d18, d1
         vtrn.32         d18, d1
         mov             r2, r3
@@ -392,9 +391,9 @@ function sbr_hf_gen_neon, export=1
         vmla.f32        q3,  q1,  d0[0]
         vmla.f32        d6,  d4,  d18
         vmla.f32        d6,  d3,  d0[1]
+        vmla.f32        d6,  d5,  d1
         vmla.f32        d7,  d20, d18
         vmla.f32        d7,  d16, d0[1]
-        vmla.f32        d6,  d5,  d1
         vmla.f32        d7,  d21, d1
         vmov            q1,  q8
         vst1.32         {q3},     [r0]!
@@ -402,42 +401,43 @@ function sbr_hf_gen_neon, export=1
         bgt             1b
         bx              lr
 endfunc
+
 function sbr_qmf_synthesis_window_neon, export=1
         push {r4,r5,lr}
         mov r5, #64*4
 1:
         mov r4, r2
         vld1.32 {q0}, [r1]
-        vld1.32 {q1}, [r4], r5
-        vmul.f32 q10, q0, q1
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmul.f32 q10, q0, q2
         add r12, r1, #192*4
-        vld1.32 {q2}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q2, q1
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
         add r12, r1, #256*4
         vld1.32 {q8}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q8, q1
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
         add r12, r1, #448*4
-        vld1.32 {q2}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q2, q1
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
         add r12, r1, #512*4
         vld1.32 {q8}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q8, q1
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
         add r12, r1, #704*4
-        vld1.32 {q2}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q2, q1
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
         add r12, r1, #768*4
         vld1.32 {q8}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q8, q1
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
         add r12, r1, #960*4
-        vld1.32 {q2}, [r12]
-        vld1.32 {q1}, [r4], r5
-        vmla.f32 q10, q2, q1
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
         add r12, r1, #1024*4
         vld1.32 {q8}, [r12]
         vld1.32 {q1}, [r4], r5
@@ -537,6 +537,8 @@ function sbr_autocorrelate_neon, export=1
         vmul.f32        d21, d1,  d1
         vmov            q8,  q0
         vmov            q11, q0
+        vmov.i32        d11, #1<<31
+        vtrn.32         d10, d11
         mov             r12, #36
 1:
         vld1.32         {q2},     [r0]!
@@ -569,26 +571,28 @@ function sbr_autocorrelate_neon, export=1
         vsub.f32        d6,  d1,  d3
         vtrn.32         d0,  d6
         vpadd.f32       d20, d20, d21
-        vst1.32         {d6},     [r1]!
-        vst1.32         {d7[0]},  [r1]!
-        vst1.32         {d7[1]},  [r1]!
+        veor.32         q3, q5, q3
+        vst1.32         {q3},     [r1]!
         vst1.32         {d20[0]}, [r1]
         bx              lr
 endfunc
 
 function conv_fltp_to_flt_2ch_neon, export=1
-	ldr	r12, [r1, #0]
-	ldr	r1, [r1, #4]
+    ldr r12, [r1, #0]
+    ldr r1, [r1, #4]
 1:
     vld1.32 {q0,q1}, [r1]!
     vld1.32 {q2,q3}, [r12]!
-    vld1.32 {q6,q7}, [r1]!
-    vld1.32 {q8,q9}, [r12]!
-    vst2.32 {q0,q2}, [r0]!
-    vst2.32 {q1,q3}, [r0]!
-    vst2.32 {q6,q8}, [r0]!
-    vst2.32 {q7,q9}, [r0]!
-    subs r2, r2, #16
+    vzip.32 q0, q2
+    vzip.32 q1, q3
+    vrev64.32 q0, q0
+    vrev64.32 q2, q2
+    vrev64.32 q1, q1
+    vrev64.32 q3, q3
+    vswp.32 q1, q2
+    vst1.32 {q0,q1}, [r0]!
+    vst1.32 {q2,q3}, [r0]!
+    subs r2, r2, #8
     beq 2f
     b 1b
 2:
