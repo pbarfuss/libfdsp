@@ -1051,10 +1051,10 @@ cglobal sbr_autocorrelate, 2,3,8
     shufps  xmm7, xmm7, q1010
     shufps  xmm2, xmm2, q0110
     movaps  xmm6, xmm7
-    mulps   xmm6, xmm1   ; real_sum1  = x[1][0] * x[2][0], x[1][1] * x[2][1]; imag_sum1 += x[1][0] * x[2][1], x[1][1] * x[2][0]
+    mulps   xmm6, xmm1   ; real_sum1  = x[1].re * x[2].re, x[1].im * x[2].im; imag_sum1 += x[1].re * x[2].im, x[1].im * x[2].re
     movaps  xmm5, xmm7
-    mulps   xmm7, xmm7   ; real_sum0  = x[1][0] * x[1][0], x[1][1] * x[1][1];
-    mulps   xmm5, xmm2   ; real_sum2 += x[1][0] * x[3][0], x[1][1] * x[3][1]; imag_sum2 += x[1][0] * x[3][1], x[1][1] * x[3][0]
+    mulps   xmm7, xmm7   ; real_sum0  = x[1].re * x[1].re, x[1].im * x[1].im;
+    mulps   xmm5, xmm2   ; real_sum2 += x[1].re * x[3].re, x[1].im * x[3].im; imag_sum2 += x[1].re * x[3].im, x[1].im * x[3].re
     mov   r2, 37*8
     add   r0, r2 
     neg   r2 
@@ -1071,9 +1071,9 @@ align 16
     mulps   xmm3, xmm2
     mulps   xmm4, xmm0
     mulps   xmm1, xmm1
-    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
-    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
-    addps   xmm7, xmm1       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
+    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
+    addps   xmm7, xmm1       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
     add     r2, 8
     movlps  xmm1, [r0+r2+16]
     movlhps xmm2, xmm2
@@ -1083,9 +1083,9 @@ align 16
     mulps   xmm3, xmm0
     mulps   xmm4, xmm1
     mulps   xmm2, xmm2
-    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
-    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
-    addps   xmm7, xmm2       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
+    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
+    addps   xmm7, xmm2       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
     add     r2, 8
     movlps  xmm2, [r0+r2+16]
     movlhps xmm0, xmm0
@@ -1095,9 +1095,9 @@ align 16
     mulps   xmm3, xmm1
     mulps   xmm4, xmm2
     mulps   xmm0, xmm0
-    addps   xmm6, xmm3       ; real_sum1 += x[i][0] * x[i + 1][0], x[i][1] * x[i + 1][1]; imag_sum1 += x[i][0] * x[i + 1][1], x[i][1] * x[i + 1][0];
-    addps   xmm5, xmm4       ; real_sum2 += x[i][0] * x[i + 2][0], x[i][1] * x[i + 2][1]; imag_sum2 += x[i][0] * x[i + 2][1], x[i][1] * x[i + 2][0];
-    addps   xmm7, xmm0       ; real_sum0 += x[i][0] * x[i][0],     x[i][1] * x[i][1];
+    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
+    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
+    addps   xmm7, xmm0       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
     jl .loop
 
     xorps   xmm5, [ps_p1p1p1m1]
