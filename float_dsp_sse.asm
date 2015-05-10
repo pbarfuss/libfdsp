@@ -243,15 +243,6 @@ section .text align=16
 
 %xdefine SUFFIX _sse
 
-    global disable_denormals
-    [type disable_denormals function]
-    align 16 
-disable_denormals:
-	stmxcsr	[rsp - 4]
-	or qword [rsp - 4], 0x8000
-	ldmxcsr	[rsp - 4]
-    ret
-
 ;-----------------------------------------------------------------------------
 ; void vector_fmul(float *dst, const float *src0, const float *src1, uint32_t len)
 ;-----------------------------------------------------------------------------
