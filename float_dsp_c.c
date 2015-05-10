@@ -135,8 +135,8 @@ FDSP_EXPORT void sbr_qmf_post_shuffle_c(FFTComplex W[32], float *z)
 {
     unsigned int k;
     for (k = 0; k < 32; k++) {
-        W[k].re = -z[k];
-        W[k].im =  z[63-k];
+        W[k].re = z[k];
+        W[k].im = z[63-k];
     }
 }
 
