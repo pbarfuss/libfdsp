@@ -243,6 +243,15 @@ section .text align=16
 
 %xdefine SUFFIX _sse
 
+    global disable_denormals
+    [type disable_denormals function]
+    align 16 
+disable_denormals:
+	stmxcsr	[rsp - 4]
+	or qword [rsp - 4], 0x8000
+	ldmxcsr	[rsp - 4]
+    ret
+
 ;-----------------------------------------------------------------------------
 ; void vector_fmul(float *dst, const float *src0, const float *src1, uint32_t len)
 ;-----------------------------------------------------------------------------
@@ -640,13 +649,35 @@ cglobal sbr_sum64x5, 1,2,4
     xor     r1, r1
 .loop:
     movaps  xmm0, [r0+r1+   0]
-    addps   xmm0, [r0+r1+ 256]
-    addps   xmm0, [r0+r1+ 512]
-    addps   xmm0, [r0+r1+ 768]
-    addps   xmm0, [r0+r1+1024]
-    movaps  [r0+r1], xmm0
-    add     r1, 0x10 
-    cmp     r1, 1024
+    movaps  xmm1, [r0+r1+0x10]
+    movaps  xmm2, [r0+r1+0x20]
+    movaps  xmm3, [r0+r1+0x30]
+
+    addps   xmm0, [r0+r1+0x100]
+    addps   xmm1, [r0+r1+0x110]
+    addps   xmm2, [r0+r1+0x120]
+    addps   xmm3, [r0+r1+0x130]
+
+    addps   xmm0, [r0+r1+0x200]
+    addps   xmm1, [r0+r1+0x210]
+    addps   xmm2, [r0+r1+0x220]
+    addps   xmm3, [r0+r1+0x230]
+
+    addps   xmm0, [r0+r1+0x300]
+    addps   xmm1, [r0+r1+0x310]
+    addps   xmm2, [r0+r1+0x320]
+    addps   xmm3, [r0+r1+0x330]
+
+    addps   xmm0, [r0+r1+0x400]
+    addps   xmm1, [r0+r1+0x410]
+    addps   xmm2, [r0+r1+0x420]
+    addps   xmm3, [r0+r1+0x430]
+    movaps  [r0+r1     ], xmm0
+    movaps  [r0+r1+0x10], xmm1
+    movaps  [r0+r1+0x20], xmm2
+    movaps  [r0+r1+0x30], xmm3
+    add     r1, 0x40 
+    cmp     r1, 0x400
     jne  .loop
     RET
 cendfunc sbr_sum64x5
@@ -720,8 +751,8 @@ cglobal sbr_qmf_deint_bfly, 3,5,8
     lea               r3, [r0 + 64*4]
 .loop:
     movaps            xmm0, [r1+r4]
-    movaps            xmm1, [r2]
     movaps            xmm4, [r1+r4+0x10]
+    movaps            xmm1, [r2]
     movaps            xmm5, [r2+0x10]
 %ifdef ARCH_X86_64
     pshufd            xmm2, xmm0, 0x1b
@@ -738,10 +769,10 @@ cglobal sbr_qmf_deint_bfly, 3,5,8
     shufps            xmm6, xmm6, 0x1b
     shufps            xmm7, xmm7, 0x1b
 %endif
-    addps             xmm5, xmm2
-    subps             xmm7, xmm0
-    addps             xmm1, xmm6
-    subps             xmm3, xmm4
+    subps             xmm5, xmm2
+    addps             xmm7, xmm0
+    subps             xmm1, xmm6
+    addps             xmm3, xmm4
     movaps            [r3], xmm1
     movaps       [r3+0x10], xmm5
     movaps         [r0+r4], xmm7
@@ -826,8 +857,8 @@ cglobal sbrenc_qmf_deint_bfly, 2,5,8
     lea                 r2, [r1 + 64*4]
 .loop:
     movaps            xmm0, [r1+r4]
-    movaps            xmm1, [r2]
     movaps            xmm4, [r1+r4+0x10]
+    movaps            xmm1, [r2]
     movaps            xmm5, [r2+0x10]
 %ifdef ARCH_X86_64
     pshufd            xmm2, xmm0, 0x1b
@@ -1042,62 +1073,52 @@ cglobal sbr_qmf_deint_neg, 2,4,4
     RET
 cendfunc sbr_qmf_deint_neg
 
-cglobal sbr_autocorrelate, 2,3,8
-    movlps  xmm1, [r0+16]
-    shufps  xmm1, xmm1, q0110
+%macro ACSTEP 3 ;xmm0, xmm1                                                       
+    movaps  xmm3, %1
+    movaps  xmm4, %1
+    mulps   xmm3, %2
+    mulps   xmm4, %3
+    mulps   %1, %1
+    addps   xmm6, xmm3 ; r01r += x[i].re * x[i+1].re, x[i].im * x[i+1].im; r01i += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
+    addps   xmm5, xmm4 ; r02r += x[i].re * x[i+2].re, x[i].im * x[i+2].im; r02i += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
+    addps   xmm7, %1   ; r11r += x[i].re * x[i].re,   x[i].im * x[i].im;
+    movlhps %2, %2
+%endmacro
 
+cglobal sbr_autocorrelate, 3,4,8
+    shl r2, 3
     movlps  xmm7, [r0+8 ]
-    movlps  xmm2, [r0+24]
-    shufps  xmm7, xmm7, q1010
-    shufps  xmm2, xmm2, q0110
+    movlhps xmm7, xmm7
     movaps  xmm6, xmm7
-    mulps   xmm6, xmm1   ; real_sum1  = x[1].re * x[2].re, x[1].im * x[2].im; imag_sum1 += x[1].re * x[2].im, x[1].im * x[2].re
     movaps  xmm5, xmm7
-    mulps   xmm7, xmm7   ; real_sum0  = x[1].re * x[1].re, x[1].im * x[1].im;
-    mulps   xmm5, xmm2   ; real_sum2 += x[1].re * x[3].re, x[1].im * x[3].im; imag_sum2 += x[1].re * x[3].im, x[1].im * x[3].re
-    mov   r2, 37*8
-    add   r0, r2 
-    neg   r2 
-    add   r2, 8
+
+    add r0, 16
+    movlps  xmm1, [r0  ]
+    shufps  xmm1, xmm1, q0110
+    movlps  xmm2, [r0+8]
+    shufps  xmm2, xmm2, q0110
+    mulps   xmm6, xmm1 ; r01r = x[1].re * x[2].re, x[1].im * x[2].im; r01i = x[1].re * x[2].im, x[1].im * x[2].re
+    mulps   xmm5, xmm2 ; r02r = x[1].re * x[3].re, x[1].im * x[3].im; r02i = x[1].re * x[3].im, x[1].im * x[3].re
+    mulps   xmm7, xmm7 ; r11r = x[1].re * x[1].re, x[1].im * x[1].im;
+    shufps  xmm1, xmm1, q1010
+    mov   r3, 2*8
 
 align 16
 .loop:
-    add     r2, 8
-    movlps  xmm0, [r0+r2+16]
-    movlhps xmm1, xmm1
+    movlps  xmm0, [r0+r3   ]
     shufps  xmm0, xmm0, q0110
-    movaps  xmm3, xmm1
-    movaps  xmm4, xmm1
-    mulps   xmm3, xmm2
-    mulps   xmm4, xmm0
-    mulps   xmm1, xmm1
-    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
-    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
-    addps   xmm7, xmm1       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
-    add     r2, 8
-    movlps  xmm1, [r0+r2+16]
-    movlhps xmm2, xmm2
+    ACSTEP  xmm1, xmm2, xmm0
+
+    movlps  xmm1, [r0+r3+8]
     shufps  xmm1, xmm1, q0110
-    movaps  xmm3, xmm2
-    movaps  xmm4, xmm2
-    mulps   xmm3, xmm0
-    mulps   xmm4, xmm1
-    mulps   xmm2, xmm2
-    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
-    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
-    addps   xmm7, xmm2       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
-    add     r2, 8
-    movlps  xmm2, [r0+r2+16]
-    movlhps xmm0, xmm0
+    ACSTEP  xmm2, xmm0, xmm1
+
+    movlps  xmm2, [r0+r3+16]
     shufps  xmm2, xmm2, q0110
-    movaps  xmm3, xmm0
-    movaps  xmm4, xmm0
-    mulps   xmm3, xmm1
-    mulps   xmm4, xmm2
-    mulps   xmm0, xmm0
-    addps   xmm6, xmm3       ; real_sum1 += x[i].re * x[i+1].re, x[i].im * x[i+1].im; imag_sum1 += x[i].re * x[i+1].im, x[i].im * x[i+1].re;
-    addps   xmm5, xmm4       ; real_sum2 += x[i].re * x[i+2].re, x[i].im * x[i+2].im; imag_sum2 += x[i].re * x[i+2].im, x[i].im * x[i+2].re;
-    addps   xmm7, xmm0       ; real_sum0 += x[i].re * x[i].re,   x[i].im * x[i].im;
+    ACSTEP  xmm0, xmm1, xmm2
+
+    add     r3, 24
+    cmp     r3, r2
     jl .loop
 
     xorps   xmm5, [ps_p1p1p1m1]

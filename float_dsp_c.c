@@ -33,14 +33,14 @@ FDSP_EXPORT void vector_fmul_scalar_c(float *dst, const float *src, float mul, u
 
 FDSP_EXPORT void vector_fmul_window_c(float *dst, const float *src0, const float *src1, const float *win, unsigned int len)
 {
-    unsigned int i, j;
-    for (i = 0, j = len - 1; i < len; i++, j--) {
+    unsigned int i;
+    for (i = 0; i < len; i++) {
         float s0 = src0[i];
         float s1 = src1[len - i - 1];
         float wi = win[i];
-        float wj = win[len + j];
-        dst[i]       = s0 * wj - s1 * wi;
-        dst[len + j] = s0 * wi + s1 * wj;
+        float wj = win[2*len - i - 1];
+        dst[i]             = s0 * wj - s1 * wi;
+        dst[2*len - i - 1] = s0 * wi + s1 * wj;
     }
 }
 
@@ -144,8 +144,8 @@ FDSP_EXPORT void sbr_qmf_deint_bfly_c(float *v, const float *src0, const float *
 {
     unsigned int i;
     for (i = 0; i < 64; i++) {
-        v[      i] = src1[63 - i] - src0[i];
-        v[127 - i] = src1[63 - i] + src0[i];
+        v[      i] = src1[63 - i] + src0[i];
+        v[127 - i] = src1[63 - i] - src0[i];
     }
 }
 
@@ -168,7 +168,7 @@ FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
         X_high[i].re = X_low[i].re +
             X_low[i - 2].re * alpha[0] + X_low[i - 2].im * alpha[1] +
             X_low[i - 1].re * alpha[2] + X_low[i - 1].im * alpha[3];
-        X_high[i].im = X_low[i].im + 
+        X_high[i].im = X_low[i].im +
             X_low[i - 2].im * alpha[0] - X_low[i - 2].re * alpha[1] +
             X_low[i - 1].im * alpha[2] - X_low[i - 1].re * alpha[3];
     }
@@ -215,13 +215,13 @@ FDSP_EXPORT void aacenc_calc_expspec_c(float *expspec, float *mdct_spectrum, uns
         _f32 tmp;
         uint32_t ix;
         float x, y, t;
-   
-        x = mdct_spectrum[i]; 
+
+        x = mdct_spectrum[i];
         tmp.f = x;
         tmp.i &= 0x7fffffff;
         x = tmp.f;
         ix = tmp.i;
-    
+
         ix  = 0x4f58cae5 - (ix >> 2);
         tmp.i = ix;
         y = tmp.f;
@@ -269,12 +269,12 @@ void sbr_qmf_deint_neg_c(float *v, const float *src)
     }
 }
 
-void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5])
+void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5], unsigned int ac_len)
 {
     float real_sum2 = 0.0f, imag_sum2 = 0.0f;
     float real_sum1 = 0.0f, imag_sum1 = 0.0f, real_sum0 = 0.0f;
     unsigned int i;
-    for (i = 1; i < 38; i++) {
+    for (i = 1; i < ac_len; i++) {
         real_sum0 +=  x[i].re * x[i  ].re + x[i].im * x[i  ].im;
         real_sum1 +=  x[i].re * x[i+1].re + x[i].im * x[i+1].im;
         imag_sum1 += -x[i].re * x[i+1].im + x[i].im * x[i+1].re;
