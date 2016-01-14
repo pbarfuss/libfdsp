@@ -33,14 +33,14 @@ FDSP_EXPORT void vector_fmul_scalar_c(float *dst, const float *src, float mul, u
 
 FDSP_EXPORT void vector_fmul_window_c(float *dst, const float *src0, const float *src1, const float *win, unsigned int len)
 {
-    unsigned int i;
-    for (i = 0; i < len; i++) {
+    unsigned int i, len2 = (len >> 1);
+    for (i = 0; i < len2; i++) {
         float s0 = src0[i];
-        float s1 = src1[len - i - 1];
+        float s1 = src1[len2 - i - 1];
         float wi = win[i];
-        float wj = win[2*len - i - 1];
-        dst[i]             = s0 * wj - s1 * wi;
-        dst[2*len - i - 1] = s0 * wi + s1 * wj;
+        float wj = win[len - i - 1];
+        dst[i]           = s0 * wj - s1 * wi;
+        dst[len - i - 1] = s0 * wi + s1 * wj;
     }
 }
 
@@ -64,6 +64,15 @@ FDSP_EXPORT void vector_fmul_reverse_c(float *dst, const float *src0, const floa
         dst[i] = src0[i] * src1[len - i - 1];
 }
 
+FDSP_EXPORT void vector_fmul_cf_c(FFTComplex *dst, const FFTComplex *src0, const float *src1, unsigned int len)
+{
+    unsigned int i;
+    for (i = 0; i < len; i++) {
+        dst[i].re = src0[i].re * src1[i];
+        dst[i].im = src0[i].im * src1[i];
+    }
+}
+
 FDSP_EXPORT void butterflies_float_c(float *__restrict v1, float *__restrict v2, unsigned int len)
 {
     unsigned int i;
@@ -75,7 +84,7 @@ FDSP_EXPORT void butterflies_float_c(float *__restrict v1, float *__restrict v2,
     }
 }
 
-FDSP_EXPORT float scalarproduct_float_c(const float *v1, const float *v2, unsigned int len)
+FDSP_EXPORT float scalarproduct_float_c(float *v1, float *v2, unsigned int len)
 {
     float p = 0.0;
     unsigned int i;
@@ -85,16 +94,12 @@ FDSP_EXPORT float scalarproduct_float_c(const float *v1, const float *v2, unsign
     return p;
 }
 
-FDSP_EXPORT float scalarproduct_symmetric_fir_float_c(const float *v1, const float *v2, unsigned int len)
+FDSP_EXPORT void calc_power_spectrum_c(float *psd, const FFTComplex *vin, unsigned int len)
 {
-    float p = 0.0;
     unsigned int i;
-    for (i = 0; i < len; i++) {
-        float t = v1[i] + v1[2*len - i];
-        p += t * v2[i];
+    for (i = 0; i < len/2; i++) {
+        psd[i] = ((vin[i].re * vin[i].re) + (vin[i].im * vin[i].im));
     }
-    p += v1[len] * v2[len];
-    return p;
 }
 
 FDSP_EXPORT void vector_clipf_c(float *dst, const float *src,
@@ -114,6 +119,15 @@ FDSP_EXPORT void sbr_sum64x5_c(float *z)
     unsigned int k;
     for (k = 0; k < 64; k++) {
         float f = z[k] + z[k + 64] + z[k + 128] + z[k + 192] + z[k + 256];
+        z[k] = f;
+    }
+}
+
+FDSP_EXPORT void sbrenc_sum128x5_c(float *z)
+{
+    unsigned int k;
+    for (k = 0; k < 128; k++) {
+        float f = z[k] + z[k + 128] + z[k + 256] + z[k + 384] + z[k + 512];
         z[k] = f;
     }
 }
@@ -149,6 +163,15 @@ FDSP_EXPORT void sbr_qmf_deint_bfly_c(float *v, const float *src0, const float *
     }
 }
 
+FDSP_EXPORT void sbrenc_qmf_deint_bfly_c(float *v, const float *src0, const float *src1)
+{
+    unsigned int i;
+    for (i = 0; i < 64; i++) {
+        v[      i] = -src1[63 - i] + src0[i];
+        v[127 - i] =  src1[63 - i] + src0[i];
+    }
+}
+
 FDSP_EXPORT void sbr_hf_g_filt_c(FFTComplex *Y, FFTComplex (*X_high)[40],
                      const float *g_filt, size_t m_max, size_t ixh)
 {
@@ -174,37 +197,42 @@ FDSP_EXPORT void sbr_hf_gen_c(FFTComplex *X_high, FFTComplex *X_low,
     }
 }
 
-FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window, unsigned int k)
+FDSP_EXPORT void sbr_qmf_synthesis_window_c(float *out, float *v, float *sbr_qmf_window)
 {
-    const size_t _k = ((k == 32) ? 32 : 64);
-    unsigned int n, mask = (k-1);
-    for (n = 0; n < _k; n++) {
-        out[n] = v[n]*sbr_qmf_window[n] + v[n+19*_k]*sbr_qmf_window[n+9*_k];
+    unsigned int n;
+    for (n = 0; n < 64; n++) {
+        out[n] = v[n]*sbr_qmf_window[n] + v[n+19*64]*sbr_qmf_window[n+9*64];
     }
-    for (n = 0; n < 2*_k; n++) {
-        float t  = v[n+ 3*_k]*sbr_qmf_window[n+  _k];
-              t += v[n+ 7*_k]*sbr_qmf_window[n+3*_k];
-              t += v[n+11*_k]*sbr_qmf_window[n+5*_k];
-              t += v[n+15*_k]*sbr_qmf_window[n+7*_k];
-        out[n&mask] += t;
-    }
-}
-
-FDSP_EXPORT void sbrenc_sum128x5_c(float *z)
-{
-    unsigned int k;
-    for (k = 0; k < 128; k++) {
-        float f = z[k] + z[k + 128] + z[k + 256] + z[k + 384] + z[k + 512];
-        z[k] = f;
+    for (n = 0; n < 128; n++) {
+        float t  = v[n+ 3*64]*sbr_qmf_window[n+  64];
+              t += v[n+ 7*64]*sbr_qmf_window[n+3*64];
+              t += v[n+11*64]*sbr_qmf_window[n+5*64];
+              t += v[n+15*64]*sbr_qmf_window[n+7*64];
+        out[n&63] += t;
     }
 }
 
-FDSP_EXPORT void sbrenc_qmf_deint_bfly_c(float *v, const float *src)
+FDSP_EXPORT void sbr_qmf_synthesis_window_ds_c(float *out, float *v, float *sbr_qmf_window)
 {
-    unsigned int i;
-    for (i = 0; i < 64; i++) {
-        v[      i] = -src[127 - i] + src[i];
-        v[127 - i] =  src[127 - i] + src[i];
+    unsigned int n;
+    for (n = 0; n < 32; n++) {
+        out[n] = v[n]*sbr_qmf_window[n] + v[n+19*32]*sbr_qmf_window[n+9*32];
+    }
+    for (n = 0; n < 64; n++) {
+        float t  = v[n+ 3*32]*sbr_qmf_window[n+  32];
+              t += v[n+ 7*32]*sbr_qmf_window[n+3*32];
+              t += v[n+11*32]*sbr_qmf_window[n+5*32];
+              t += v[n+15*32]*sbr_qmf_window[n+7*32];
+        out[n&31] += t;
+    }
+}
+
+FDSP_EXPORT void aac_update_ltp_c(float *dst, const float *buf, const float *win, unsigned int len)
+{
+    unsigned int i, len2 = 2*len-1;
+    for (i = 0; i < len; i++) {
+        dst[     i] = buf[i] * win[len2 - i];
+        dst[len2-i] = buf[i] * win[i];
     }
 }
 
@@ -260,16 +288,7 @@ FDSP_EXPORT void vorbis_inverse_coupling_c(float *mag, float *ang, unsigned int 
     }
 }
 
-void sbr_qmf_deint_neg_c(float *v, const float *src)
-{
-    unsigned int i;
-    for (i = 0; i < 32; i++) {
-        v[     i] =  src[63 - 2*i    ];
-        v[63 - i] = -src[63 - 2*i - 1];
-    }
-}
-
-void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5], unsigned int ac_len)
+FDSP_EXPORT void sbr_autocorrelate_c(const FFTComplex x[40], float phi[5], unsigned int ac_len)
 {
     float real_sum2 = 0.0f, imag_sum2 = 0.0f;
     float real_sum1 = 0.0f, imag_sum1 = 0.0f, real_sum0 = 0.0f;

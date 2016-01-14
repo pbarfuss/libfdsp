@@ -96,6 +96,7 @@
 %define r3 rcx
 %define r4 r8
 %define r5 r9
+%define r6 r10
 
 %macro PROLOGUE 2-4+ ; #args, #regs, #xmm_regs, arg_names...
 %endmacro
@@ -171,9 +172,6 @@
 %macro cglobal_internal 1-2+
     %xdefine %1 mangle(%1)
     global %1
-%ifdef BINFMT_IS_ELF
-    [type %1 function]
-%endif
     align 16 
     %1:
 %ifdef WIN64
@@ -191,8 +189,8 @@
 %endmacro
 %macro cendfunc_internal 1
 %ifdef BINFMT_IS_ELF
-.endfunc
-[size %1 %1 %+ .endfunc-%1]
+%1 %+ size EQU $-%1
+[size %1 %1 %+ size]
 %endif
 %endmacro
 
@@ -242,15 +240,6 @@ ps_5: times 4 dd 0.5
 section .text align=16
 
 %xdefine SUFFIX _sse
-
-    global disable_denormals
-    [type disable_denormals function]
-    align 16 
-disable_denormals:
-	stmxcsr	[rsp - 4]
-	or qword [rsp - 4], 0x8000
-	ldmxcsr	[rsp - 4]
-    ret
 
 ;-----------------------------------------------------------------------------
 ; void vector_fmul(float *dst, const float *src0, const float *src1, uint32_t len)
@@ -399,7 +388,7 @@ cglobal vector_fmul_reverse, 4,4,2
     movaps  [r0 + r3 + 0x10], xmm0
     movaps  [r0 + r3], xmm1
     add     r2, 2*0x10
-    sub     r3,  2*0x10
+    sub     r3, 2*0x10
     jge     .loop
     RET
 cendfunc vector_fmul_reverse
@@ -412,10 +401,9 @@ cglobal vector_fmul_window, 5,6,6
 %ifdef WIN64
     movsxd     rdi, edi
 %endif
+    shl       r4, 0x1
     mov       r5, r4
     neg       r5 
-    shl       r5, 0x2
-    shl       r4, 0x2
     add       r0, r4
     add       r1, r4
     add       r3, r4
@@ -469,7 +457,7 @@ cglobal butterflies_float, 3,3,3
 cendfunc butterflies_float
 
 ;-----------------------------------------------------------------------------
-; float scalarproduct_float(const float *v1, const float *v2, uint32_t len)
+; float scalarproduct_float(float *v1, float *v2, uint32_t len)
 ;-----------------------------------------------------------------------------
 cglobal scalarproduct_float, 3,3,3
     shl        r2, 2
@@ -496,39 +484,27 @@ cglobal scalarproduct_float, 3,3,3
 cendfunc scalarproduct_float
 
 ;-----------------------------------------------------------------------------
-; float scalarproduct_symmetric_fir_float(const float *v1, const float *v2, uint32_t len)
+; float calc_power_spectrum(float *psd, FFTComplex *vin, uint32_t len)
 ;-----------------------------------------------------------------------------
-cglobal scalarproduct_symmetric_fir_float, 3,4,3
-    shl        r2, 2
-    lea        r4, [2*r2-0x08]
-    xor        r3, r3
-    xorps    xmm0, xmm0
+cglobal calc_power_spectrum, 3,3,3
+    shl      r2, 1
+    xor      r3, r3
 .loop:
-    movups   xmm1, [r0+r3]
-    movups   xmm2, [r0+r4]
-    shufps   xmm2, xmm2, 0x1b
-    addps    xmm1, xmm2
-    movaps   xmm3, [r1+r3]
-    mulps    xmm1, xmm3
-    addps    xmm0, xmm1
-    add        r3, 0x10
-    sub        r4, 0x10
-    cmp        r3, r2 
+    movups   xmm2, [r1+2*r3] ; [r0 i0 r1 i1]
+    movups   xmm5, [r1+2*r3+0x10] ; [r2 i2 r3 i3]
+    movaps   xmm3, xmm2
+    shufps   xmm2, xmm5, q2020 ; {r0,r1,r2,r3}
+    shufps   xmm3, xmm5, q3131 ; {i0,i1,i2,i3}
+    mulps    xmm2, xmm2        ; {r0^2, r1^2, r2^r, r3^2}
+    mulps    xmm3, xmm3        ; {i0^2, i1^2, i2^2, i3^2}
+    addps    xmm3, xmm2        ; {r0^2 + i0^2, r1^2 + i1^2, r2^2 + i2^2, r3^2 + i3^2}
+    movups   [r0+r3], xmm3 
+    add      r3, 0x10
+    cmp      r3, r2
     jl .loop
-    movaps   xmm1, xmm0
-    shufps   xmm1, xmm0, 0x1b
-    addps    xmm1, xmm0
-    movhlps  xmm0, xmm1
-    addps    xmm0, xmm1
-    movss    xmm2, [r0+r2]
-    mulss    xmm2, [r1+r2]
-    addss    xmm0, xmm2
-%ifndef ARCH_X86_64
-    movss     [esp + stack_offset + 8],  xmm0
-    fld dword [esp + stack_offset + 8] 
-%endif
+
     RET
-cendfunc scalarproduct_symmetric_fir_float
+cendfunc calc_power_spectrum
 
 ;-----------------------------------------------------
 ;void vector_clipf(float *dst, const float *src, float min, float max, uint32_t len)
@@ -573,52 +549,10 @@ cglobal vector_clipf, 3,4,6
     RET
 cendfunc vector_clipf
 
-cglobal scalarproduct_cplx, 3,3,3
-    shl      r2, 2
-    xor      r3, r3
-    xorps    xmm0, xmm0
-    xorps    xmm1, xmm1
-.loop:
-    movups   xmm2, [r0+2*r3] ; [r0 i0 r1 i1]
-    movups   xmm5, [r0+2*r3+0x10] ; [r2 i2 r3 i3]
-    movaps   xmm6, [r1+r3]
-    movaps   xmm7, [r1+r3+0x10]
-    movaps   xmm3, xmm2
-    shufps   xmm2, xmm5, q3131 ; {r0,r1,r2,r3}
-    shufps   xmm3, xmm5, q2020 ; {i0,i1,i2,i3}
-    mulps    xmm2, xmm6
-    mulps    xmm3, xmm6
-    addps    xmm1, xmm2
-    addps    xmm0, xmm3
-    movups   xmm2, [r0+2*r3+0x20] ; [r0 i0 r1 i1]
-    movups   xmm5, [r0+2*r3+0x30] ; [r2 i2 r3 i3]
-    movaps   xmm3, xmm2
-    shufps   xmm2, xmm5, q3131 ; {r0,r1,r2,r3}
-    shufps   xmm3, xmm5, q2020 ; {i0,i1,i2,i3}
-    mulps    xmm2, xmm7
-    mulps    xmm3, xmm7
-    addps    xmm1, xmm2
-    addps    xmm0, xmm3
-    add      r3, 0x20
-    cmp      r3, r2
-    jl .loop
-
-    shufps   xmm0, xmm1, 0x11
-    shufps   xmm1, xmm0, 0xbb
-    addps    xmm1, xmm0
-
-    unpcklps xmm0, xmm1 ; { 00 01 10 11 }
-    movhlps  xmm1, xmm0 ; { 10 11 30 31 }
-    addps    xmm0, xmm1 ; { 00+10 01+11 ? ? }
-
-%ifndef ARCH_X86_64
-    movss     r0m,  xmm0
-    fld dword r0m
-%endif
-    RET
-cendfunc scalarproduct_cplx
-
-cglobal vector_fmul_cplx, 4,4,2, dst, src0, src1, len
+;-----------------------------------------------------------------------------
+; void vector_fmul_cf(FFTComplex *dst, const FFTComplex *src0, const float *src1, uint32_t len)
+;-----------------------------------------------------------------------------
+cglobal vector_fmul_cf, 4,4,2, dst, src0, src1, len
     shl      r3, 2
     xor      r4, r4
 .loop:
@@ -640,7 +574,7 @@ cglobal vector_fmul_cplx, 4,4,2, dst, src0, src1, len
     cmp      r4, r3
     jl .loop
     RET
-cendfunc vector_fmul_cplx
+cendfunc vector_fmul_cf
 
 ;-----------------------------------------------------------------------------
 ; void sbr_sum64x5(float *z)
@@ -649,38 +583,34 @@ cglobal sbr_sum64x5, 1,2,4
     xor     r1, r1
 .loop:
     movaps  xmm0, [r0+r1+   0]
-    movaps  xmm1, [r0+r1+0x10]
-    movaps  xmm2, [r0+r1+0x20]
-    movaps  xmm3, [r0+r1+0x30]
-
-    addps   xmm0, [r0+r1+0x100]
-    addps   xmm1, [r0+r1+0x110]
-    addps   xmm2, [r0+r1+0x120]
-    addps   xmm3, [r0+r1+0x130]
-
-    addps   xmm0, [r0+r1+0x200]
-    addps   xmm1, [r0+r1+0x210]
-    addps   xmm2, [r0+r1+0x220]
-    addps   xmm3, [r0+r1+0x230]
-
-    addps   xmm0, [r0+r1+0x300]
-    addps   xmm1, [r0+r1+0x310]
-    addps   xmm2, [r0+r1+0x320]
-    addps   xmm3, [r0+r1+0x330]
-
-    addps   xmm0, [r0+r1+0x400]
-    addps   xmm1, [r0+r1+0x410]
-    addps   xmm2, [r0+r1+0x420]
-    addps   xmm3, [r0+r1+0x430]
-    movaps  [r0+r1     ], xmm0
-    movaps  [r0+r1+0x10], xmm1
-    movaps  [r0+r1+0x20], xmm2
-    movaps  [r0+r1+0x30], xmm3
-    add     r1, 0x40 
-    cmp     r1, 0x400
+    addps   xmm0, [r0+r1+ 256]
+    addps   xmm0, [r0+r1+ 512]
+    addps   xmm0, [r0+r1+ 768]
+    addps   xmm0, [r0+r1+1024]
+    movaps  [r0+r1], xmm0
+    add     r1, 0x10 
+    cmp     r1, 1024
     jne  .loop
     RET
 cendfunc sbr_sum64x5
+
+;-----------------------------------------------------------------------------
+; void sbrenc_sum128x5(float *z)
+;-----------------------------------------------------------------------------
+cglobal sbrenc_sum128x5, 1,2,4
+    xor     r1, r1
+.loop:
+    movaps  xmm0, [r0+r1+   0]
+    addps   xmm0, [r0+r1+ 512]
+    addps   xmm0, [r0+r1+1024]
+    addps   xmm0, [r0+r1+1536]
+    addps   xmm0, [r0+r1+2048]
+    movaps  [r0+r1], xmm0
+    add     r1, 0x10 
+    cmp     r1, 2048
+    jne  .loop
+    RET
+cendfunc sbrenc_sum128x5
 
 ;-----------------------------------------------------------------------------
 ; void sbr_qmf_pre_shuffle(float *z)
@@ -717,26 +647,51 @@ cglobal sbr_qmf_pre_shuffle, 1,4,6
 cendfunc sbr_qmf_pre_shuffle
 
 ;-----------------------------------------------------------------------------
-; float sbr_qmf_post_shuffle(FFTComplex *z)
+; float sbr_qmf_post_shuffle_sse(FFTComplex *z)
 ;-----------------------------------------------------------------------------
 cglobal sbr_qmf_post_shuffle, 2,3,4
     lea              r2, [r1 + (64-4)*4]
+    xor r3, r3
 .loop:
-    movaps          xmm0, [r1]
+    movaps          xmm0, [r1+r3]
     movaps          xmm1, [r2]
-    shufps          xmm1, xmm1, 0x1b
+    shufps          xmm1, xmm1, 0x1b ; [0 1 2 3] -> [3 2 1 0]
     movaps          xmm2, xmm0
-    unpcklps        xmm2, xmm1
-    unpckhps        xmm0, xmm1
-    movaps     [r0 +    0], xmm2
-    movaps     [r0 + 0x10], xmm0
-    add               r0, 0x20
+    unpcklps        xmm2, xmm1 ; [0.0 1.3 0.1 1.2]
+    unpckhps        xmm0, xmm1 ; [0.2 1.1 0.3 1.0]
+    movaps     [r0 + 2*r3 +    0], xmm2
+    movaps     [r0 + 2*r3 + 0x10], xmm0
     sub               r2, 0x10
-    add               r1, 0x10
-    cmp               r1, r2
+    add               r3, 0x10
+    cmp               r3, 128 
     jl             .loop
     RET
 cendfunc sbr_qmf_post_shuffle
+
+;-----------------------------------------------------------------------------
+; float sbr_qmf_post_shuffle_avx(FFTComplex *z)
+;-----------------------------------------------------------------------------
+cglobal_internal sbr_qmf_post_shuffle_avx, 2,3,4
+    lea              r2, [r1 + (64-8)*4]
+    xor r3, r3
+.loop:
+    vmovups         ymm0, [r1+r3]
+    vmovups         ymm1, [r2]
+    vperm2f128      ymm1, ymm1, ymm1, 0x01 ; [0 1 2 3 4 5 6 7] -> [4 5 6 7 0 1 2 3]
+    vshufps         ymm1, ymm1, ymm1, 0x1b ; [4 5 6 7 0 1 2 3] -> [7 6 5 4 3 2 1 0]
+    vunpckhps       ymm2, ymm0, ymm1
+    vunpcklps       ymm0, ymm0, ymm1
+    vextractf128    [r0 + 2*r3       ], ymm0, 0
+    vextractf128    [r0 + 2*r3 + 0x10], ymm2, 0
+    vextractf128    [r0 + 2*r3 + 0x20], ymm0, 1
+    vextractf128    [r0 + 2*r3 + 0x30], ymm2, 1
+    sub               r2, 0x20
+    add               r3, 0x20
+    cmp               r3, 128
+    jl             .loop
+    vzeroupper
+    RET
+cendfunc_internal sbr_qmf_post_shuffle_avx
 
 ;-----------------------------------------------------------------------------
 ; void sbr_qmf_deint_bfly(float *v, const float *src0, const float *src1)
@@ -790,61 +745,7 @@ cglobal sbr_qmf_deint_bfly, 3,5,8
 cendfunc sbr_qmf_deint_bfly
 
 ;-----------------------------------------------------------------------------
-; void sbr_hf_g_filt(FFTComplex *Y, FFTComplex *X_high[40],
-;                    const float *g_filt, size_t m_max, size_t ixh)
-;-----------------------------------------------------------------------------
-%define STEP  40*4*2
-cglobal sbr_hf_g_filt, 5, 5, 5
-    lea         r1, [r1 + 8*r4] ; offset by ixh elements into X_high
-    mov         r4, r3
-    and         r3, 0xFE
-    lea         r2, [r2 + r3*4]
-    lea         r0, [r0 + r3*8]
-    neg         r3
-    jz          .loop1
-.loop2:
-    movlps      xmm0, [r2 + 4*r3]
-    movlps      xmm2, [r1 + 0*STEP]
-    movhps      xmm2, [r1 + 1*STEP]
-    unpcklps    xmm0, xmm0
-    mulps       xmm0, xmm2
-    movups      [r0 + 8*r3], xmm0
-    add         r1, 2*STEP
-    add         r3, 2 
-    jnz         .loop2
-    and         r4, 1 ; number of single element loops
-    jz          .end
-.loop1: 
-    ; element 0 and 1 can be computed at the same time
-    movss       xmm0, [r2]
-    movlps      xmm2, [r1]
-    unpcklps    xmm0, xmm0
-    mulps       xmm0, xmm2
-    movlps    [r0], xmm0
-.end:
-    RET
-cendfunc sbr_hf_g_filt
-
-;-----------------------------------------------------------------------------
-; void sbrenc_sum128x5(float *z)
-;-----------------------------------------------------------------------------
-cglobal sbrenc_sum128x5, 1,2,4
-    xor     r1, r1
-.loop:
-    movaps  xmm0, [r0+r1+   0]
-    addps   xmm0, [r0+r1+ 512]
-    addps   xmm0, [r0+r1+1024]
-    addps   xmm0, [r0+r1+1536]
-    addps   xmm0, [r0+r1+2048]
-    movaps  [r0+r1], xmm0
-    add     r1, 0x10 
-    cmp     r1, 2048
-    jne  .loop
-    RET
-cendfunc sbrenc_sum128x5
-
-;-----------------------------------------------------------------------------
-; void sbrenc_qmf_deint_bfly(float *v, const float *src0)
+; void sbrenc_qmf_deint_bfly(float *v, const float *src0, const float *src1)
 ;-----------------------------------------------------------------------------
 cglobal sbrenc_qmf_deint_bfly, 2,5,8
 %ifdef WIN64
@@ -854,7 +755,6 @@ cglobal sbrenc_qmf_deint_bfly, 2,5,8
 %endif
     mov                 r4, 64*4-32
     lea                 r3, [r0 + 64*4]
-    lea                 r2, [r1 + 64*4]
 .loop:
     movaps            xmm0, [r1+r4]
     movaps            xmm4, [r1+r4+0x10]
@@ -894,6 +794,126 @@ cglobal sbrenc_qmf_deint_bfly, 2,5,8
 %endif
     RET
 cendfunc sbrenc_qmf_deint_bfly
+
+;-----------------------------------------------------------------------------
+; void sbr_hf_g_filt(FFTComplex *Y, FFTComplex *X_high[40],
+;                    const float *g_filt, size_t m_max, size_t ixh)
+;-----------------------------------------------------------------------------
+%define STEP  40*4*2
+cglobal sbr_hf_g_filt, 5, 5, 5
+    lea         r1, [r1 + 8*r4] ; offset by ixh elements into X_high
+    mov         r4, r3
+    and         r3, 0xFE
+    lea         r2, [r2 + r3*4]
+    lea         r0, [r0 + r3*8]
+    neg         r3
+    jz          .loop1
+.loop2:
+    movlps      xmm0, [r2 + 4*r3]
+    movlps      xmm2, [r1 + 0*STEP]
+    movhps      xmm2, [r1 + 1*STEP]
+    unpcklps    xmm0, xmm0
+    mulps       xmm0, xmm2
+    movups      [r0 + 8*r3], xmm0
+    add         r1, 2*STEP
+    add         r3, 2 
+    jnz         .loop2
+    and         r4, 1 ; number of single element loops
+    jz          .end
+.loop1: 
+    ; element 0 and 1 can be computed at the same time
+    movss       xmm0, [r2]
+    movlps      xmm2, [r1]
+    unpcklps    xmm0, xmm0
+    mulps       xmm0, xmm2
+    movlps    [r0], xmm0
+.end:
+    RET
+cendfunc sbr_hf_g_filt
+
+;-----------------------------------------------------------------------------
+; void sbr_hf_gen(FFTComplex *X_high, FFTComplex *X_low,
+;                 float alpha[4], unsigned int start, unsigned int end)
+;-----------------------------------------------------------------------------
+cglobal sbr_hf_gen, 5,5,8
+%ifdef WIN64
+ sub rsp, 2*16+16
+ movaps [rsp + 0x20], xmm7
+ movaps [rsp + 0x10], xmm6
+%endif
+    movaps     xmm2, [r2] ; (a0[0] a0[1])*bw    = (a[2] a[3])*bw    = (a2 a3)
+    movhlps    xmm1, xmm2     ; (a1[0] a1[1])*bw*bw = (a[0] a[1])*bw*bw = (a0 a1)
+    movaps     xmm3, xmm1 ; (a2 a3)
+    movaps     xmm4, xmm2 ; (a0 a1)
+    shufps     xmm3, xmm3, 0x55 ; (-a3 a3 -a3 a3)
+    shufps     xmm4, xmm4, 0x55 ; (-a1 a1 -a1 a1)
+    shufps     xmm1, xmm1, 0x00 ; (a2 a2 a2 a2)
+    shufps     xmm2, xmm2, 0x00 ; (a0 a0 a0 a0)
+    xorps      xmm3, [ps_p1m1p1m1]
+    xorps      xmm4, [ps_p1m1p1m1]
+
+    shl          r3, 3
+    shl          r4, 3
+    lea         r1, [r1 - 2*2*4]
+
+    movaps      xmm0, [r1 + r3]
+.loop2:
+    movups      xmm7, [r1 + r3 + 8]        ; BbCc
+    movaps      xmm5, xmm7
+    movaps      xmm6, xmm0
+    shufps      xmm0, xmm0, 0xb1                   ; aAbB
+    shufps      xmm7, xmm7, 0xb1                   ; bBcC
+    mulps       xmm0, xmm4
+    mulps       xmm6, xmm2
+    mulps       xmm7, xmm3
+    mulps       xmm5, xmm1
+    addps       xmm7, xmm0
+    addps       xmm7, xmm5
+    addps       xmm7, xmm6
+    movaps      xmm0, [r1 + r3 +16]        ; CcDd
+    addps       xmm7, xmm0
+    movaps  [r0 + r3], xmm7
+    add           r3, 16
+    cmp           r3, r4 
+    jl .loop2
+%ifdef WIN64
+ movaps xmm7, [rsp + 0x20]
+ movaps xmm6, [rsp + 0x10]
+ add rsp, 2*16+16
+%endif
+    RET
+cendfunc sbr_hf_gen
+
+;-----------------------------------------------------------------------------
+; void aac_update_ltp(float *dst, const float *buf, const float *win, uint32_t len)
+;-----------------------------------------------------------------------------
+cglobal aac_update_ltp, 4,4,2
+    lea       r3, [r3*8 - 2*0x10]
+    xor       r4, r4
+.loop:
+    movaps  xmm0, [r1 + r3 + 0x10]
+    movaps  xmm1, [r1 + r3]
+    movaps  xmm2, [r2 + r4]
+    movaps  xmm3, [r2 + r4 + 0x10]
+    movaps  xmm4, [r2 + r3 + 0x10]
+    movaps  xmm5, [r2 + r3]
+    shufps  xmm2, xmm2, 0x1b
+    shufps  xmm3, xmm3, 0x1b
+    mulps   xmm2, xmm0
+    mulps   xmm3, xmm1
+    mulps   xmm4, xmm0
+    mulps   xmm5, xmm1
+    shufps  xmm4, xmm4, 0x1b
+    shufps  xmm5, xmm5, 0x1b
+    movaps  [r0 + r4 + 0x10], xmm5
+    movaps  [r0 + r4], xmm4
+    movaps  [r0 + r3], xmm3
+    movaps  [r0 + r3 + 0x10], xmm2
+    add     r4, 2*0x10
+    sub     r3, 2*0x10
+    jge     .loop
+    RET
+cendfunc aac_update_ltp
 
 ;-----------------------------------------------------------------------------
 ; void aacenc_calc_expspec(float *expspec, const float *mdct_spectrum, uint32_t len)
@@ -959,119 +979,86 @@ align 16
 cendfunc vorbis_inverse_coupling
 
 ;-----------------------------------------------------------------------------
-; void sbr_hf_gen_sse(FFTComplex *X_high, FFTComplex *X_low,
-;                     float alpha[4], unsigned int start, unsigned int end)
+; void sbr_qmf_synthesis_window_sse(float *out, float *v, float *sbr_qmf_window)
 ;-----------------------------------------------------------------------------
-cglobal sbr_hf_gen, 5,5,8
-%ifdef WIN64
- sub rsp, 2*16+16
- movaps [rsp + 0x20], xmm7
- movaps [rsp + 0x10], xmm6
-%endif
-    movaps     xmm2, [r2] ; (a0[0] a0[1])*bw    = (a[2] a[3])*bw    = (a2 a3)
-    movhlps    xmm1, xmm2     ; (a1[0] a1[1])*bw*bw = (a[0] a[1])*bw*bw = (a0 a1)
-    movaps     xmm3, xmm1 ; (a2 a3)
-    movaps     xmm4, xmm2 ; (a0 a1)
-    shufps     xmm3, xmm3, 0x55 ; (-a3 a3 -a3 a3)
-    shufps     xmm4, xmm4, 0x55 ; (-a1 a1 -a1 a1)
-    shufps     xmm1, xmm1, 0x00 ; (a2 a2 a2 a2)
-    shufps     xmm2, xmm2, 0x00 ; (a0 a0 a0 a0)
-    xorps      xmm3, [ps_p1m1p1m1]
-    xorps      xmm4, [ps_p1m1p1m1]
-
-    shl          r3, 3
-    shl          r4, 3
-    lea         r1, [r1 - 2*2*4]
-
-    movaps      xmm0, [r1 + r3]
-.loop2:
-    movups      xmm7, [r1 + r3 + 8]        ; BbCc
-    movaps      xmm5, xmm7
-    movaps      xmm6, xmm0
-    shufps      xmm0, xmm0, 0xb1                   ; aAbB
-    shufps      xmm7, xmm7, 0xb1                   ; bBcC
-    mulps       xmm0, xmm4
-    mulps       xmm6, xmm2
-    mulps       xmm7, xmm3
-    mulps       xmm5, xmm1
-    addps       xmm7, xmm0
-    addps       xmm7, xmm5
-    addps       xmm7, xmm6
-    movaps      xmm0, [r1 + r3 +16]        ; CcDd
-    addps       xmm7, xmm0
-    movaps  [r0 + r3], xmm7
-    add           r3, 16
-    cmp           r3, r4 
-    jl .loop2
-%ifdef WIN64
- movaps xmm7, [rsp + 0x20]
- movaps xmm6, [rsp + 0x10]
- add rsp, 2*16+16
-%endif
-    RET
-cendfunc sbr_hf_gen
-
-;-----------------------------------------------------------------------------
-; void sbr_qmf_synthesis_window_sse(float *out, float *v, float *sbr_qmf_window, unsigned int n)
-;-----------------------------------------------------------------------------
-cglobal sbr_qmf_synthesis_window, 4,5,2
-    shl      r3, 2
-    xor      r4, r4
+cglobal sbr_qmf_synthesis_window, 3,4,2
+    xor      r3, r3
 .loop:
-     movaps  xmm0, [r1 + 2*r4 + 12*64]
-     movaps  xmm1, [r1 + 2*r4 + 28*64]
-     movaps  xmm2, [r1 + 2*r4 + 44*64]
-     movaps  xmm3, [r1 + 2*r4 + 60*64]
-     mulps   xmm0, [r2 + 2*r4 +  4*64]
-     mulps   xmm1, [r2 + 2*r4 + 12*64]
-     mulps   xmm2, [r2 + 2*r4 + 20*64]
-     mulps   xmm3, [r2 + 2*r4 + 28*64]
+     movaps  xmm0, [r1 + 2*r3 + 12*64]
+     movaps  xmm1, [r1 + 2*r3 + 28*64]
+     movaps  xmm2, [r1 + 2*r3 + 44*64]
+     movaps  xmm3, [r1 + 2*r3 + 60*64]
+     mulps   xmm0, [r2 + 2*r3 +  4*64]
+     mulps   xmm1, [r2 + 2*r3 + 12*64]
+     mulps   xmm2, [r2 + 2*r3 + 20*64]
+     mulps   xmm3, [r2 + 2*r3 + 28*64]
      addps   xmm2, xmm3
      addps   xmm0, xmm1
      addps   xmm0, xmm2
 
-     movaps  [r0 + 2*r4], xmm0
-     add      r4, 0x08
-     cmp      r4, r3 
+     movaps  [r0 + 2*r3], xmm0
+     add      r3, 0x08
+     cmp      r3, 0x100 
      jl .loop
 
-    xor      r4, r4
+    xor      r3, r3
 .loop2:
-     movaps   xmm0, [r0 + r4]
-     movaps   xmm1, [r0 + r4 +  4*64]
-     movaps   xmm4, [r1 + r4]
-     mulps    xmm4, [r2 + r4]
-     movaps   xmm5, [r1 + r4 + 76*64]
-     mulps    xmm5, [r2 + r4 + 36*64]
+     movaps   xmm0, [r0 + r3]
+     movaps   xmm1, [r0 + r3 +  4*64]
+     movaps   xmm4, [r1 + r3]
+     mulps    xmm4, [r2 + r3]
+     movaps   xmm5, [r1 + r3 + 76*64]
+     mulps    xmm5, [r2 + r3 + 36*64]
      addps    xmm4, xmm5
      addps    xmm0, xmm4
      addps    xmm0, xmm1
-     movaps   [r0 + r4], xmm0
-     add      r4, 0x10
-     cmp      r4, r3 
+     movaps   [r0 + r3], xmm0
+     add      r3, 0x10
+     cmp      r3, 0x100 
      jl .loop2
      RET
 cendfunc sbr_qmf_synthesis_window
 
-cglobal sbr_qmf_deint_neg, 2,4,4
-    mov        r2, -128
-    mov        r3, 0x70
-    add        r1, 0x100
-    movaps   xmm3, [pdw_80000000]
+;-----------------------------------------------------------------------------
+; void sbr_qmf_synthesis_window_ds_sse(float *out, float *v, float *sbr_qmf_window)
+;-----------------------------------------------------------------------------
+cglobal sbr_qmf_synthesis_window_ds, 3,4,2
+    xor      r3, r3
 .loop:
-    movaps   xmm0, [r1 + 2*r2]
-    movaps   xmm1, [r1 + 2*r2 + 0x10]
-    movaps   xmm2, xmm0
-    shufps   xmm2, xmm1, q2020
-    shufps   xmm1, xmm0, q1313
-    xorps    xmm2, xmm3
-    movaps   [r0 + r3], xmm1
-    movaps   [r0 + r2 + 0x100], xmm2
-    sub        r3, 0x10 
-    add        r2, 0x10 
-    jl      .loop
-    RET
-cendfunc sbr_qmf_deint_neg
+     movaps  xmm0, [r1 + 2*r3 + 12*32]
+     movaps  xmm1, [r1 + 2*r3 + 28*32]
+     movaps  xmm2, [r1 + 2*r3 + 44*32]
+     movaps  xmm3, [r1 + 2*r3 + 60*32]
+     mulps   xmm0, [r2 + 2*r3 +  4*32]
+     mulps   xmm1, [r2 + 2*r3 + 12*32]
+     mulps   xmm2, [r2 + 2*r3 + 20*32]
+     mulps   xmm3, [r2 + 2*r3 + 28*32]
+     addps   xmm2, xmm3
+     addps   xmm0, xmm1
+     addps   xmm0, xmm2
+
+     movaps  [r0 + 2*r3], xmm0
+     add      r3, 0x08
+     cmp      r3, 0x80
+     jl .loop
+
+    xor      r3, r3
+.loop2:
+     movaps   xmm0, [r0 + r3]
+     movaps   xmm1, [r0 + r3 +  4*32]
+     movaps   xmm4, [r1 + r3]
+     mulps    xmm4, [r2 + r3]
+     movaps   xmm5, [r1 + r3 + 76*32]
+     mulps    xmm5, [r2 + r3 + 36*32]
+     addps    xmm4, xmm5
+     addps    xmm0, xmm4
+     addps    xmm0, xmm1
+     movaps   [r0 + r3], xmm0
+     add      r3, 0x10
+     cmp      r3, 0x80
+     jl .loop2
+     RET
+cendfunc sbr_qmf_synthesis_window_ds
 
 %macro ACSTEP 3 ;xmm0, xmm1                                                       
     movaps  xmm3, %1

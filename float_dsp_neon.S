@@ -58,10 +58,10 @@ function vector_fmul_window_neon, export=1
         push {r4,r5,lr}
         ldr lr, [sp, #12]
         sub r2, r2, #8
-        sub r5, lr, #2
-        add r2, r2, r5, lsl #2
-        add r4, r3, r5, lsl #3
-        add ip, r0, r5, lsl #3
+        sub r5, lr, #4
+        add r2, r2, r5, lsl #1
+        add r4, r3, r5, lsl #2
+        add ip, r0, r5, lsl #2
         mov r5, #-16
 1:
         vld1.32 {d0,d1}, [r1]!
@@ -82,7 +82,7 @@ function vector_fmul_window_neon, export=1
         vswp d22, d23
         vst1.32 {d20,d21},[r0]!
         vst1.32 {d22,d23},[ip], r5
-        subs lr, lr, #4
+        subs lr, lr, #8
         beq 2f
         b 1b
 2:
@@ -164,6 +164,17 @@ function scalarproduct_float_neon, export=1
         vmov.32 r0, d0[0]
         bx lr
 endfunc
+function calc_power_spectrum_neon, export=1
+1:
+        vld1.32 {q0},[r1]!
+        vmul.f32 q0, q0, q0
+	vuzp.32 d0, d1
+	vadd.f32 d0, d1, d0
+        vst1.32 {d0}, [r0]!
+        subs r2, r2, #4
+        bgt 1b
+        bx lr
+endfunc
 function scalarproduct_symmetric_fir_float_neon, export=1
         add r3, r1, r2, lsl #3
         mov r12, #-12
@@ -210,6 +221,28 @@ function sbr_sum64x5_neon, export=1
         add r3, r0, #192*4
         add lr, r0, #256*4
         mov r12, #64
+1:
+        vld1.32 {q0}, [r0]
+        vld1.32 {q1}, [r1]!
+        vld1.32 {q2}, [r2]!
+        vld1.32 {q3}, [r3]!
+        vld1.32 {q8}, [lr]!
+        vadd.f32 q0, q0, q1
+        vadd.f32 q0, q0, q2
+        vadd.f32 q0, q0, q3
+        vadd.f32 q0, q0, q8
+        vst1.32 {q0}, [r0]!
+        subs r12, #4
+        bgt 1b
+        pop {pc}
+endfunc
+function sbrenc_sum128x5_neon, export=1
+        push {lr}
+        add r1, r0, #128*4
+        add r2, r0, #256*4
+        add r3, r0, #384*4
+        add lr, r0, #512*4
+        mov r12, #128
 1:
         vld1.32 {q0}, [r0]
         vld1.32 {q1}, [r1]!
@@ -293,12 +326,37 @@ function sbr_qmf_deint_bfly_neon, export=1
         vld1.32         {q1},     [r2], lr
         vrev64.32       q2,  q0
         vrev64.32       q3,  q1
-        vadd.f32        d3,  d4,  d3
-        vadd.f32        d2,  d5,  d2
-        vsub.f32        d0,  d7,  d0
-        vsub.f32        d1,  d6,  d1
+        vsub.f32        d3,  d4,  d3
+        vsub.f32        d2,  d5,  d2
+        vadd.f32        d0,  d7,  d0
+        vadd.f32        d1,  d6,  d1
         vst1.32         {q1},     [r3], lr
         vst1.32         {q0},     [r0]!
+        subs            r12, r12, #4
+        bgt             1b
+        pop             {pc}
+endfunc
+function sbrenc_qmf_deint_bfly_neon, export=1
+        push            {lr}
+        add             r2,  r2,  #60*4
+        add             r3,  r0,  #124*4
+        mov             r12, #64
+        mov             lr,  #-16
+1:
+        vld1.32         {q0},     [r1]!
+        vld1.32         {q1},     [r2], lr
+        vrev64.32       q2,  q0
+        vrev64.32       q3,  q1
+        vsub.f32        d3,  d4,  d3
+        vsub.f32        d2,  d5,  d2
+        vadd.f32        d0,  d7,  d0
+        vadd.f32        d1,  d6,  d1
+	    vrev64.32 q0, q0
+	    vrev64.32 q1, q1
+	    vswp d0, d1
+	    vswp d2, d3
+        vst1.32         {q0},     [r3], lr
+        vst1.32         {q1},     [r0]!
         subs            r12, r12, #4
         bgt             1b
         pop             {pc}
@@ -318,55 +376,10 @@ function sbr_hf_g_filt_neon, export=1
         vst1.32         {q3},        [r0]!
         subs            r3,  r3,  #2
         bgt             1b
-        it              lt
         bxlt            lr
         vmul.f32        d0,  d0,  d2
         vst1.32         {d0},        [r0]!
         bx              lr
-endfunc
-function sbrenc_sum128x5_neon, export=1
-        push {lr}
-        add r1, r0, #128*4
-        add r2, r0, #256*4
-        add r3, r0, #384*4
-        add lr, r0, #512*4
-        mov r12, #128
-1:
-        vld1.32 {q0}, [r0]
-        vld1.32 {q1}, [r1]!
-        vld1.32 {q2}, [r2]!
-        vld1.32 {q3}, [r3]!
-        vld1.32 {q8}, [lr]!
-        vadd.f32 q0, q0, q1
-        vadd.f32 q0, q0, q2
-        vadd.f32 q0, q0, q3
-        vadd.f32 q0, q0, q8
-        vst1.32 {q0}, [r0]!
-        subs r12, #4
-        bgt 1b
-        pop {pc}
-endfunc
-function sbrenc_qmf_deint_bfly_neon, export=1
-        push            {lr}
-        mov             r2,  r1
-        add             r2,  r2,  #124*4
-        add             r3,  r0,  #124*4
-        mov             r12, #64
-        mov             lr,  #-16
-1:
-        vld1.32         {q0},     [r1]!
-        vld1.32         {q1},     [r2], lr
-        vrev64.32       q2,  q0
-        vrev64.32       q3,  q1
-        vadd.f32        d3,  d4,  d3
-        vadd.f32        d2,  d5,  d2
-        vsub.f32        d0,  d0,  d7
-        vsub.f32        d1,  d1,  d6
-        vst1.32         {q1},     [r3], lr
-        vst1.32         {q0},     [r0]!
-        subs            r12, r12, #4
-        bgt             1b
-        pop             {pc}
 endfunc
 function sbr_hf_gen_neon, export=1
         vld1.32         {q0}, [r2]
@@ -457,6 +470,93 @@ function sbr_qmf_synthesis_window_neon, export=1
         pop {r4,r5,pc}
 endfunc
 
+function sbr_qmf_synthesis_window_ds_neon, export=1
+        push {r4,r5,lr}
+        mov r5, #32*4
+1:
+        mov r4, r2
+        vld1.32 {q0}, [r1]
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmul.f32 q10, q0, q2
+        add r12, r1, #192*2
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
+        add r12, r1, #256*2
+        vld1.32 {q8}, [r12]
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
+        add r12, r1, #448*2
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
+        add r12, r1, #512*2
+        vld1.32 {q8}, [r12]
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
+        add r12, r1, #704*2
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
+        add r12, r1, #768*2
+        vld1.32 {q8}, [r12]
+        vld1.32 {q2}, [r4], r5
+        vld1.32 {q3}, [r4], r5
+        vmla.f32 q10, q8, q2
+        add r12, r1, #960*2
+        vld1.32 {q1}, [r12]
+        vmla.f32 q10, q1, q3
+        add r12, r1, #1024*2
+        vld1.32 {q8}, [r12]
+        vld1.32 {q1}, [r4], r5
+        vmla.f32 q10, q8, q1
+        add r12, r1, #1216*2
+        vld1.32 {q2}, [r12]
+        vld1.32 {q1}, [r4], r5
+        vmla.f32 q10, q2, q1
+        vst1.32 {q10}, [r0]!
+
+        subs r3, r3, #4
+        add r1, r1, #16
+        add r2, r2, #16
+        beq 2f
+        b 1b
+2:
+        pop {r4,r5,pc}
+endfunc
+
+function aac_update_ltp_neon, export=1
+        push {r4,r5,lr}
+	mov r4, r2
+        add r5, r0, r3, lsl #3
+        add r2, r2, r3, lsl #3
+        sub r2, r2, #32
+        sub r5, r5, #32
+        mov r12, #-32
+1:
+        vld1.32 {q0-q1}, [r1]!
+        vld1.32 {q10-q11}, [r4]!
+        vld1.32 {q2-q3}, [r2], r12
+        vrev64.32 q2, q2
+        vrev64.32 q3, q3
+        vmul.f32 d16, d0, d7
+        vmul.f32 d17, d1, d6
+        vmul.f32 d18, d2, d5
+        vmul.f32 d19, d3, d4
+	vmul.f32 d27, d0, d20
+	vmul.f32 d26, d1, d21
+	vmul.f32 d25, d2, d22
+	vmul.f32 d24, d3, d23
+        vrev64.32 q12, q12
+        vrev64.32 q13, q13
+        vst1.32 {q8-q9}, [r0]!
+        vst1.32 {q12-q13}, [r5], r12
+        subs r3, r3, #8
+        beq 2f
+        b 1b
+2:
+        pop {r4,r5,pc}
+endfunc
 function aacenc_calc_expspec_neon, export=1
         vmov.f32 q3, #0.5
         vmov.i32 q10, #0x7fffffff
@@ -511,23 +611,6 @@ function vorbis_inverse_coupling_neon, export=1
         bx              lr
 endfunc
 
-function sbr_qmf_deint_neg_neon, export=1
-        add             r1,  r1,  #60*4
-        add             r2,  r0,  #62*4
-        mov             r3,  #-16
-        mov             r12, #32
-        vmov.i32        d2,  #1<<31
-1:
-        vld2.32         {d0,d1},  [r1], r3
-        veor            d0,  d0,  d2
-        vrev64.32       d1,  d1
-        vst1.32         {d0},     [r2]
-        vst1.32         {d1},     [r0]!
-        sub             r2,  r2,  #8
-        subs            r12, r12, #2
-        bgt             1b
-        bx              lr
-endfunc
 function sbr_autocorrelate_neon, export=1
         vld1.32         {q0},     [r0]!
         vmov.f32        d0,  #0.0
